@@ -125,9 +125,9 @@ struct ProfileRow: View {
                         .foregroundStyle(.secondary)
                 }
                 if !status.isSignedIn {
-                    Label("Sign in inside the Claude \(status.label) window with “Continue with email”", systemImage: "person.crop.circle.badge.exclamationmark")
+                    Label("Sign in inside the Claude \(status.label) window", systemImage: "person.crop.circle.badge.exclamationmark")
                         .font(.caption).foregroundStyle(.orange)
-                        .help("“Continue with Google” finishes in your browser, and macOS hands the result to the main Claude app instead of this window.")
+                        .help("While this window signs in, sign-in links from your browser open here instead of in the main Claude app.")
                 } else if status.isUnexpectedAccount, let expected = status.profile?.email {
                     Label("Signed in as a different account than \(expected)", systemImage: "exclamationmark.triangle")
                         .font(.caption).foregroundStyle(.orange)

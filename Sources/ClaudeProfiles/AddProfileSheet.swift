@@ -36,7 +36,7 @@ struct AddProfileSheet: View {
                 DockIconPreview(label: form.label.isEmpty ? "NEW" : form.label.uppercased(), color: form.color)
                 VStack(alignment: .leading, spacing: 4) {
                     Text("Add a Subscription").font(.title3.weight(.semibold))
-                    Text("A new Claude window opens with its own Dock icon. Sign in there with **Continue with email** and the code from your inbox. **Continue with Google** won’t work: macOS hands its result to the main Claude app.")
+                    Text("A new Claude window opens with its own Dock icon. Sign in there with this account, with Google or with email.")
                         .font(.callout)
                         .foregroundStyle(.secondary)
                         .fixedSize(horizontal: false, vertical: true)

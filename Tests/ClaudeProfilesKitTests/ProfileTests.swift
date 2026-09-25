@@ -119,3 +119,38 @@ struct LauncherTests {
         #expect(color.blueComponent < 0.01)
     }
 }
+
+@Suite("Sign-in routing")
+struct SignInRoutingTests {
+    final class Recorder: @unchecked Sendable {
+        var calls: [(String, Bool)] = []
+    }
+
+    @Test func routesLinksToTheProfileAndBack() throws {
+        let box = try Sandbox()
+        let recorder = Recorder()
+        let routing = SignInRouting(paths: box.paths) { app, on in recorder.calls.append((app.lastPathComponent, on)) }
+        try routing.begin(profileID: "work", allProfileIDs: ["work", "lab"])
+        #expect(recorder.calls.map(\.0) == ["Claude.app", "Claude lab.app", "Claude work.app"])
+        #expect(recorder.calls.map(\.1) == [false, false, true])
+        #expect(routing.state?.profileID == "work")
+
+        recorder.calls = []
+        routing.end(allProfileIDs: ["work", "lab"])
+        #expect(recorder.calls.last! == ("Claude.app", true))
+        #expect(recorder.calls.dropLast().allSatisfy { !$0.1 })
+        #expect(routing.state == nil)
+    }
+
+    @Test func finishesWhenSignedInAbandonedOrNeverStarted() {
+        let start = Date(timeIntervalSince1970: 1_700_000_000)
+        let state = SignInRouting.State(profileID: "work", startedAt: start)
+        let soon = start.addingTimeInterval(10)
+        #expect(!SignInRouting.isFinished(state, signedIn: false, running: false, profileExists: true, now: soon))
+        #expect(!SignInRouting.isFinished(state, signedIn: false, running: true, profileExists: true, now: start.addingTimeInterval(600)))
+        #expect(SignInRouting.isFinished(state, signedIn: true, running: true, profileExists: true, now: soon))
+        #expect(SignInRouting.isFinished(state, signedIn: false, running: false, profileExists: false, now: soon))
+        #expect(SignInRouting.isFinished(state, signedIn: false, running: false, profileExists: true, now: start.addingTimeInterval(120)))
+        #expect(SignInRouting.isFinished(state, signedIn: false, running: true, profileExists: true, now: start.addingTimeInterval(16 * 60)))
+    }
+}

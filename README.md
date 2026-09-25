@@ -34,7 +34,7 @@ Claude Profiles gives every subscription its own Claude window with its own Dock
 - **Shared sessions.** Claude Code sessions created in any window appear in every window. Deleted and archived sessions stay deleted and archived everywhere.
 - **Usage at a glance.** Five-hour and weekly usage for every subscription, from what Claude Desktop itself records. The one with the most headroom is highlighted.
 - **Knows who is signed in.** Every row shows the email of the account in that window and warns if it is not the one you intended.
-- **Easy to add and remove.** Enter an email, sign in with the emailed code inside the new window, done. Removing moves the profile to the Trash, so nothing is lost by accident.
+- **Easy to add and remove.** Enter an email, sign in inside the new window, done. Removing moves the profile to the Trash, so nothing is lost by accident.
 - **Menu bar and CLI.** Open any subscription from the menu bar, or script it with `claude-profiles`.
 - **Survives Claude updates.** App copies are APFS clones (almost no disk space) and are rebuilt automatically after Claude Desktop updates.
 
@@ -72,7 +72,7 @@ Builds are signed ad hoc on your Mac, so Gatekeeper doesn’t get involved. If y
 
 1. Open **Claude Profiles** and click **Add Subscription**.
 2. Enter the account’s email and, if you like, change the Dock label and color.
-3. A new Claude window opens. Sign in there with **Continue with email** and the code Anthropic sends to that address. Don’t use **Continue with Google** in a profile window (see [Known limitations](#known-limitations)).
+3. A new Claude window opens. Sign in there with that account, with Google or with email.
 4. To keep a profile in the Dock, drag its launcher from `~/Applications/Claude Profiles` (**⋯ → Show Launcher in Finder**) to the Dock. Spotlight finds launchers too (“Claude WORK”). Don’t use **Keep in Dock** on a running profile window: that pins the app copy itself, which opens without the profile’s sign-in.
 5. When a subscription runs out, open the same session from the sidebar of another window and keep going.
 
@@ -108,6 +108,8 @@ The binary ships inside the app: `ln -s ~/Applications/Claude\ Profiles/Claude\ 
 
 A profile is Claude Desktop started with its own `--user-data-dir`, which is standard Electron behavior. Session sharing copies the small index cards Claude Desktop keeps for each Claude Code session into every account’s folder; the conversations themselves already live in `~/.claude`. While any Claude window is open, sharing only adds and updates; deletions are spread only when all windows are closed. Every card it removes is backed up first, as is the first version of the day of every card it overwrites; backups older than a week go to the Trash.
 
+Google sign-in finishes in your browser and comes back to Claude through a `claude://` link, which macOS normally hands to the main Claude app. While a profile window is signing in, Claude Profiles leaves only that window’s app copy registered for those links, and gives them back to the main app as soon as the profile is signed in (or after 15 minutes). The link goes from macOS straight to Claude; Claude Profiles never reads it.
+
 More detail: [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
 
 ### Privacy
@@ -134,7 +136,6 @@ Profile copies are rebuilt from the new version the next time you open them (or 
 ## Known limitations
 
 - Archive lists are merged: a session archived in any window is archived in all of them, and un-archiving it in one window doesn’t stick. Undoing the merge safely would need Claude Desktop to tell stale writes from real changes.
-- Google sign-in doesn’t reach profile windows. It finishes in your browser, which returns the result through a `claude://` link, and macOS delivers that link to the main Claude app, which ignores a sign-in it didn’t start. Email sign-in happens entirely inside the window and works.
 - Claude Desktop doesn’t lock sessions across windows. Work in a session from one window at a time.
 - There is no Developer ID signature yet, so prebuilt downloads need a one-time “Open Anyway”.
 

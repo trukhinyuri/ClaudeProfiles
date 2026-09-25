@@ -24,6 +24,12 @@ A profile is three things, all derived from a registry entry in `~/Library/Appli
 
 Engines are rebuilt when `CFBundleVersion` of the installed Claude differs from the clone’s and the profile isn’t running (`ProfileManager.refresh()` and on open).
 
+## Signing in
+
+Claude Desktop opens Google sign-in in the default browser, which returns the result through a `claude://` link. Launch Services delivers that link to the registered copy of Claude, and every profile runs a copy with the same bundle identifier, so without help the main app receives it and discards it as a sign-in it didn’t start.
+
+`SignInRouting` fixes the destination rather than the link. Opening a profile that has no signed-in account unregisters the main app and the other app copies (`lsregister -u`) and registers that profile’s copy, and records this in `sign-in.json`. Each status refresh checks whether the profile is now signed in, has been waiting for more than 15 minutes, or never started; then the copies are unregistered and the main app is registered again. Claude Profiles never sees the link or anything in it. Email sign-in happens inside the window and needs none of this.
+
 ## Session sharing
 
 Claude Code conversations are stored in `~/.claude/projects` and are the same for every window. What differs is the sidebar: Claude Desktop lists sessions from small index cards kept per account and organization:

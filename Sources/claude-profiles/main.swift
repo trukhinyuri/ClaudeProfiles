@@ -59,7 +59,7 @@ do {
             ?? Profile.suggestedLabel(for: email, taken: Set(manager.profiles.map(\.label)))
         let profile = try manager.create(label: label, email: email, color: value(of: "--color", in: args))
         try await manager.open(profile.id)
-        print("Created Claude \(profile.label). Sign in as \(email) in the window that just opened, with “Continue with email” (Google sign-in returns to the main Claude app).")
+        print("Created Claude \(profile.label). Sign in as \(email) in the window that just opened.")
     case "open":
         guard args.count >= 2 else { fail("open needs a profile") }
         if ["main", "claude"].contains(args[1].lowercased()) { try await manager.openMain() }

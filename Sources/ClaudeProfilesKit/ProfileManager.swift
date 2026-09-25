@@ -53,6 +53,7 @@ public struct ProfileStatus: Identifiable, Equatable, Sendable {
 public final class ProfileManager: @unchecked Sendable {
     public let paths: Paths
     public let registry: ProfileRegistry
+    public let signInRouting: SignInRouting
     /// The `claude-profiles` executable that launchers call. `nil` makes launchers open the engine directly.
     public var cliPath: URL?
     private var fm: FileManager { .default }
@@ -63,6 +64,7 @@ public final class ProfileManager: @unchecked Sendable {
     public init(paths: Paths = .standard, cliPath: URL? = nil) {
         self.paths = paths
         self.registry = ProfileRegistry(paths: paths)
+        self.signInRouting = SignInRouting(paths: paths)
         self.cliPath = cliPath
     }
 
@@ -85,11 +87,26 @@ public final class ProfileManager: @unchecked Sendable {
     public func statuses() -> [ProfileStatus] {
         let running = runningBundlePaths()
         let main = status(profile: nil, dataDir: paths.mainDataDir, running: running.contains(paths.claudeApp.standardizedFileURL.path))
-        return [main] + profiles.map { profile in
+        let all = [main] + profiles.map { profile in
             status(profile: profile, dataDir: paths.dataDir(for: profile.id),
                    running: running.contains(paths.engine(for: profile.id).standardizedFileURL.path))
         }
+        finishSignInIfDone(all)
+        return all
     }
+
+    /// Returns `claude://` links to the main app once the profile signing in is done with them.
+    private func finishSignInIfDone(_ statuses: [ProfileStatus]) {
+        guard let state = signInRouting.state else { return }
+        let target = statuses.first { $0.profile?.id == state.profileID }
+        if SignInRouting.isFinished(state, signedIn: target?.isSignedIn ?? false, running: target?.isRunning ?? false,
+                                    profileExists: target != nil) {
+            signInRouting.end(allProfileIDs: profiles.map(\.id))
+        }
+    }
+
+    /// The profile whose window currently receives sign-in links, if any.
+    public var profileSigningIn: String? { signInRouting.state?.profileID }
 
     private func status(profile: Profile?, dataDir: URL, running: Bool) -> ProfileStatus {
         let account = DesktopData.accountID(in: dataDir)
@@ -160,6 +177,9 @@ public final class ProfileManager: @unchecked Sendable {
     public func open(_ id: String) async throws {
         guard let profile = profiles.first(where: { $0.id == id }) else { throw ProfileError.notFound(id) }
         let engine = paths.engine(for: profile.id)
+        if DesktopData.accountID(in: paths.dataDir(for: profile.id)) == nil {
+            try signInRouting.begin(profileID: profile.id, allProfileIDs: profiles.map(\.id))
+        }
         if let running = claudeProcesses().first(where: { $0.bundleURL?.standardizedFileURL == engine.standardizedFileURL }) {
             running.activate()
             return
@@ -202,6 +222,7 @@ public final class ProfileManager: @unchecked Sendable {
             }
             try registry.save(try registry.load().filter { $0.id != id })
         }
+        if signInRouting.state?.profileID == id { signInRouting.end(allProfileIDs: profiles.map(\.id)) }
     }
 
     // MARK: Maintenance
