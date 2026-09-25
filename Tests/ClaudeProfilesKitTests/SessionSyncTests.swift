@@ -212,4 +212,87 @@ struct SettingsSyncTests {
         #expect(box.read(box.work.appending(path: "config.json")) == #"{"token":"work"}"#, "sign-in is never copied")
         #expect(try sync.run(into: box.work) == 0, "a second run has nothing to do")
     }
+
+    @Test func scheduledTasksStayOffInProfiles() throws {
+        let box = try Sandbox()
+        try box.write(#"{"preferences":{"ccdScheduledTasksEnabled":true,"coworkScheduledTasksEnabled":true,"wakeSchedulerEnabled":true}}"#,
+                      to: box.main.appending(path: "claude_desktop_config.json"))
+        try SettingsSync(paths: box.paths).run(into: box.work)
+        let prefs = try #require(SettingsSync.readJSON(box.work.appending(path: "claude_desktop_config.json"))?["preferences"] as? [String: Any])
+        for key in SettingsSync.schedulerPreferences {
+            #expect(prefs[key] as? Bool == false, "only the main app runs scheduled tasks: \(key)")
+        }
+    }
+
+    @Test func toolTogglesFollowTheProfilesAccount() throws {
+        let box = try Sandbox()
+        try box.write(#"{"lastKnownAccountUuid":"\#(Sandbox.accountA)"}"#, to: box.main.appending(path: "config.json"))
+        try box.write(#"{"lastKnownAccountUuid":"\#(Sandbox.accountB)"}"#, to: box.work.appending(path: "config.json"))
+        try box.write(#"{"owners":{"\#(Sandbox.accountA)":{"github":{"push":false}}}}"#,
+                      to: box.main.appending(path: "mcp-user-tool-toggles.json"))
+        try SettingsSync(paths: box.paths).run(into: box.work)
+        let owners = try #require(SettingsSync.readJSON(box.work.appending(path: "mcp-user-tool-toggles.json"))?["owners"] as? [String: Any])
+        let chosen = try #require(owners[Sandbox.accountB] as? [String: Any])
+        #expect((chosen["github"] as? [String: Any])?["push"] as? Bool == false)
+    }
+
+    @Test func appearanceIsCopiedButSignInIsNot() throws {
+        let box = try Sandbox()
+        let fm = FileManager.default
+        try box.write(#"{"userThemeMode":"dark","locale":"en-US","oauth:tokenCache":"main-secret","lastKnownAccountUuid":"\#(Sandbox.accountA)"}"#,
+                      to: box.main.appending(path: "config.json"))
+        let own = box.work.appending(path: "config.json")
+        try box.write(#"{"userThemeMode":"light","oauth:tokenCache":"work-secret","lastKnownAccountUuid":"\#(Sandbox.accountB)"}"#, to: own)
+        try fm.setAttributes([.posixPermissions: 0o600], ofItemAtPath: own.path)
+
+        try SettingsSync(paths: box.paths).run(into: box.work)
+
+        let config = try #require(SettingsSync.readJSON(own))
+        #expect(config["userThemeMode"] as? String == "dark")
+        #expect(config["locale"] as? String == "en-US")
+        #expect(config["oauth:tokenCache"] as? String == "work-secret")
+        #expect(config["lastKnownAccountUuid"] as? String == Sandbox.accountB)
+        #expect((try fm.attributesOfItem(atPath: own.path)[.posixPermissions] as? NSNumber)?.intValue == 0o600)
+        let backedUp = (try? fm.subpathsOfDirectory(atPath: box.paths.backupsDir.path)) ?? []
+        #expect(!backedUp.contains { $0.hasSuffix("/config.json") }, "the file holding sign-in is never copied into backups")
+    }
+
+    @Test func profileNeverSignedInGetsNoConfigFile() throws {
+        let box = try Sandbox()
+        try box.write(#"{"userThemeMode":"dark","oauth:tokenCache":"main-secret"}"#, to: box.main.appending(path: "config.json"))
+        try SettingsSync(paths: box.paths).run(into: box.work)
+        #expect(!box.exists(box.work.appending(path: "config.json")))
+    }
+}
+
+@Suite("Organizations")
+struct OrganizationTests {
+    @Test func organizationIsTheMostRecentlyUsedOne() throws {
+        let box = try Sandbox()
+        let older = "11111111-1111-1111-1111-111111111111", newer = "22222222-2222-2222-2222-222222222222"
+        let fm = FileManager.default
+        try box.pair(box.work, account: Sandbox.accountB, org: older)
+        try box.pair(box.work, account: Sandbox.accountB, org: newer)
+        try box.pair(box.work, account: Sandbox.accountB, org: "not-an-org")
+        try fm.setAttributes([.modificationDate: Date().addingTimeInterval(-3600)],
+                             ofItemAtPath: box.work.appending(path: "claude-code-sessions/\(Sandbox.accountB)/\(older)").path)
+        #expect(DesktopData.organizationID(in: box.work, accountID: Sandbox.accountB) == newer)
+        #expect(DesktopData.organizationID(in: box.work, accountID: Sandbox.accountA) == nil)
+    }
+
+    @Test func newlySignedInProfileGetsASessionFolder() throws {
+        let box = try Sandbox()
+        let org = "33333333-3333-3333-3333-333333333333"
+        try ProfileRegistry(paths: box.paths).save([Profile(id: "work", label: "WORK", email: "w@example.com", color: "#1971C2")])
+        try box.write(#"{"lastKnownAccountUuid":"\#(Sandbox.accountB)"}"#, to: box.work.appending(path: "config.json"))
+        try FileManager.default.createDirectory(at: box.work.appending(path: "local-agent-mode-sessions/\(Sandbox.accountB)/\(org)"),
+                                                withIntermediateDirectories: true)
+        let main = try box.pair(box.main, account: Sandbox.accountA)
+        try box.write(#"{"title":"one"}"#, to: main.appending(path: "local_1.json"))
+
+        _ = try ProfileManager(paths: box.paths).syncSessions()
+
+        let folder = box.work.appending(path: "claude-code-sessions/\(Sandbox.accountB)/\(org)")
+        #expect(box.read(folder.appending(path: "local_1.json")) == #"{"title":"one"}"#, "shared before the window restarts")
+    }
 }

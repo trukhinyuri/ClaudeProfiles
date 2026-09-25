@@ -18,6 +18,8 @@ final class AppModel: ObservableObject {
     let isDemo = ProcessInfo.processInfo.environment["CLAUDE_PROFILES_DEMO"] == "1"
     private var refreshTimer: Timer?
     private var syncTimer: Timer?
+    /// Profiles whose window was open and not yet signed in at the last check.
+    private var awaitingSignIn: Set<String> = []
 
     init() {
         let cli = Bundle.main.bundleURL.appending(path: "Contents/Helpers/claude-profiles")
@@ -66,6 +68,24 @@ final class AppModel: ObservableObject {
             await MainActor.run {
                 if self.statuses != fresh { self.statuses = fresh }
                 if self.registryError != problem { self.registryError = problem }
+                self.restartAfterFirstSignIn(fresh)
+            }
+        }
+    }
+
+    /// Claude reads sessions and per-account settings only at launch, so a window that has just been signed in
+    /// for the first time is restarted once to show them.
+    private func restartAfterFirstSignIn(_ statuses: [ProfileStatus]) {
+        for status in statuses {
+            guard let id = status.profile?.id else { continue }
+            if status.isRunning && !status.isSignedIn {
+                awaitingSignIn.insert(id)
+            } else if awaitingSignIn.remove(id) != nil, status.isRunning, status.isSignedIn {
+                let manager = manager
+                run("Loading your sessions into Claude \(status.label)…") {
+                    try await Task.sleep(for: .seconds(3))   // let Claude finish saving the new sign-in
+                    try await manager.finishFirstSignIn(id)
+                }
             }
         }
     }

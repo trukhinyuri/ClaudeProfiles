@@ -34,6 +34,20 @@ public enum DesktopData {
         return id
     }
 
+    /// UUID of the organization Claude Desktop uses for `accountID`, taken from the folders it creates per
+    /// account and organization. The most recently used one wins if there are several.
+    public static func organizationID(in dataDir: URL, accountID: String) -> String? {
+        let fm = FileManager.default
+        for folder in ["claude-code-sessions", "local-agent-mode-sessions", "spaces-present"] {
+            let account = dataDir.appending(path: "\(folder)/\(accountID)", directoryHint: .isDirectory)
+            let orgs = ((try? fm.contentsOfDirectory(at: account, includingPropertiesForKeys: [.contentModificationDateKey])) ?? [])
+                .filter { $0.lastPathComponent.count == 36 && UUID(uuidString: $0.lastPathComponent) != nil }
+            let modified = { (url: URL) in (try? url.resourceValues(forKeys: [.contentModificationDateKey]).contentModificationDate) ?? .distantPast }
+            if let newest = orgs.max(by: { modified($0) < modified($1) }) { return newest.lastPathComponent }
+        }
+        return nil
+    }
+
     public static func usage(in dataDir: URL) -> Usage? {
         struct History: Decodable {
             struct Sample: Decodable {

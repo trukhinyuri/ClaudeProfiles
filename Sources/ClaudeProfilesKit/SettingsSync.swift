@@ -1,15 +1,18 @@
 import Foundation
 
 /// Gives a profile the main app's local setup before its window starts: desktop extensions, MCP servers,
-/// tool toggles, SSH hosts and app preferences. The main app is the source; a profile keeps only settings
-/// the main app doesn't have. Sign-in data (`config.json`, cookies) is never touched.
+/// tool toggles, SSH hosts, app preferences and appearance. The main app is the source; a profile keeps only
+/// settings the main app doesn't have. Sign-in data (tokens in `config.json`, cookies) is never copied.
 ///
 /// Run it only while the profile's window is closed: Claude writes these files back when it quits.
 public struct SettingsSync: Sendable {
     /// Files and folders copied as they are.
-    static let copied = ["Claude Extensions", "Claude Extensions Settings", "extensions-installations.json", "ssh_configs.json"]
-    /// JSON files merged key by key, main app first.
-    static let merged = ["claude_desktop_config.json", "mcp-user-tool-toggles.json"]
+    static let copied = ["Claude Extensions", "Claude Extensions Settings", "extensions-installations.json",
+                         "ssh_configs.json", "claude-ssh-remote"]
+    /// Scheduled tasks run only in the main app; with these on, every window would run each task.
+    static let schedulerPreferences = ["ccdScheduledTasksEnabled", "coworkScheduledTasksEnabled", "wakeSchedulerEnabled"]
+    /// The only `config.json` keys copied; the rest of that file is sign-in and per-window state.
+    static let appearanceKeys = ["userThemeMode", "windowControlsZoomFactor", "locale"]
 
     public let paths: Paths
     private var fm: FileManager { .default }
@@ -21,7 +24,10 @@ public struct SettingsSync: Sendable {
     public func run(into dataDir: URL, now: Date = Date()) throws -> Int {
         let source = paths.mainDataDir
         let backup = Backup(paths: paths, now: now)
+        let mainAccount = DesktopData.accountID(in: source)
+        let account = DesktopData.accountID(in: dataDir)
         var changed = 0
+
         for name in Self.copied {
             let from = source.appending(path: name), to = dataDir.appending(path: name)
             guard fm.fileExists(atPath: from.path), !fm.contentsEqual(atPath: from.path, andPath: to.path) else { continue }
@@ -32,17 +38,54 @@ public struct SettingsSync: Sendable {
             try fm.copyItem(at: from, to: to)   // an APFS clone, so extensions take no extra space
             changed += 1
         }
-        for name in Self.merged {
-            let from = source.appending(path: name), to = dataDir.appending(path: name)
-            guard let main = Self.readJSON(from) else { continue }
-            let current = Self.readJSON(to) ?? [:]
-            let result = Self.merge(current, main)
-            guard !NSDictionary(dictionary: result).isEqual(to: current) else { continue }
-            if fm.fileExists(atPath: to.path) { _ = try backup.save(to) }
-            try JSONSerialization.data(withJSONObject: result, options: [.prettyPrinted, .sortedKeys]).write(to: to, options: .atomic)
-            changed += 1
-        }
+
+        if try mergeJSON("claude_desktop_config.json", into: dataDir, backup: backup, adjust: { config in
+            var preferences = config["preferences"] as? [String: Any] ?? [:]
+            for key in Self.schedulerPreferences { preferences[key] = false }
+            config["preferences"] = preferences
+        }) { changed += 1 }
+
+        // Tool toggles are kept per account; the profile's account gets the ones chosen in the main app.
+        if try mergeJSON("mcp-user-tool-toggles.json", into: dataDir, backup: backup, adjust: { toggles in
+            guard let mainAccount, let account, var owners = toggles["owners"] as? [String: Any],
+                  let chosen = owners[mainAccount] else { return }
+            owners[account] = chosen
+            toggles["owners"] = owners
+        }) { changed += 1 }
+
+        if try copyAppearance(into: dataDir) { changed += 1 }
         return changed
+    }
+
+    /// Merges `name` from the main app into the profile, applies `adjust`, and writes it if anything changed.
+    private func mergeJSON(_ name: String, into dataDir: URL, backup: Backup,
+                           adjust: (inout [String: Any]) -> Void) throws -> Bool {
+        let from = paths.mainDataDir.appending(path: name), to = dataDir.appending(path: name)
+        guard let main = Self.readJSON(from) else { return false }
+        let current = Self.readJSON(to) ?? [:]
+        var result = Self.merge(current, main)
+        adjust(&result)
+        guard !NSDictionary(dictionary: result).isEqual(to: current) else { return false }
+        if fm.fileExists(atPath: to.path) { _ = try backup.save(to) }
+        try JSONSerialization.data(withJSONObject: result, options: [.prettyPrinted, .sortedKeys]).write(to: to, options: .atomic)
+        return true
+    }
+
+    /// Copies theme, zoom and language into the profile's `config.json`, leaving everything else in it untouched.
+    /// That file also holds the profile's sign-in, so it is edited in place and never backed up or copied.
+    private func copyAppearance(into dataDir: URL) throws -> Bool {
+        let to = dataDir.appending(path: "config.json")
+        guard let main = Self.readJSON(paths.mainDataDir.appending(path: "config.json")),
+              var config = Self.readJSON(to) else { return false }
+        let before = NSDictionary(dictionary: config)
+        for key in Self.appearanceKeys {
+            if let value = main[key] { config[key] = value }
+        }
+        guard !before.isEqual(to: config) else { return false }
+        let permissions = (try? fm.attributesOfItem(atPath: to.path)[.posixPermissions]) ?? NSNumber(value: 0o600)
+        try JSONSerialization.data(withJSONObject: config, options: [.prettyPrinted]).write(to: to, options: .atomic)
+        try fm.setAttributes([.posixPermissions: permissions], ofItemAtPath: to.path)
+        return true
     }
 
     /// `main` wins; nested objects such as `preferences` or per-account maps are merged the same way.

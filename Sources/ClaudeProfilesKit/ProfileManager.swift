@@ -250,8 +250,39 @@ public final class ProfileManager: @unchecked Sendable {
     @discardableResult
     public func syncSessions() throws -> SessionSync.Report? {
         try FileLock.withLock(paths.stateDir.appending(path: "sync.lock"), blocking: false) {
-            try SessionSync(paths: paths, dataDirs: dataDirs).run(propagateDeletions: !isAnyClaudeRunning)
+            createSessionFolders()
+            return try SessionSync(paths: paths, dataDirs: dataDirs).run(propagateDeletions: !isAnyClaudeRunning)
         }
+    }
+
+    /// Claude Desktop creates a signed-in account's session folder only when that account starts its first
+    /// session, and reads it only at launch. Creating it right away lets sharing fill it before the next launch.
+    func createSessionFolders() {
+        for dataDir in dataDirs {
+            guard let account = DesktopData.accountID(in: dataDir),
+                  let org = DesktopData.organizationID(in: dataDir, accountID: account) else { continue }
+            let folder = dataDir.appending(path: "\(SessionSync.sessionsFolder)/\(account)/\(org)", directoryHint: .isDirectory)
+            if !fm.fileExists(atPath: folder.path) {
+                try? fm.createDirectory(at: folder, withIntermediateDirectories: true)
+            }
+        }
+    }
+
+    /// Restarts a profile's window once after its first sign-in. Before that, Claude didn't know the account,
+    /// so it started without the shared sessions and the settings kept per account.
+    /// A window that doesn't quit within 20 seconds is left alone; it picks everything up on its next start.
+    public func finishFirstSignIn(_ id: String) async throws {
+        guard profiles.contains(where: { $0.id == id }) else { throw ProfileError.notFound(id) }
+        _ = try? syncSessions()
+        let engine = paths.engine(for: id).standardizedFileURL
+        let running = claudeProcesses().filter { $0.bundleURL?.standardizedFileURL == engine }
+        running.forEach { $0.terminate() }
+        for _ in 0..<100 where running.contains(where: { !$0.isTerminated }) {
+            try await Task.sleep(for: .milliseconds(200))
+        }
+        guard running.allSatisfy(\.isTerminated) else { return }
+        _ = try? syncSessions()
+        try await open(id)
     }
 
     // MARK: Building
