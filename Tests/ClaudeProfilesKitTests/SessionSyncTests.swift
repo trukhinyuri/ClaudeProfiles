@@ -300,7 +300,7 @@ struct OrganizationTests {
         let org = "33333333-3333-3333-3333-333333333333"
         try ProfileRegistry(paths: box.paths).save([Profile(id: "work", label: "WORK", email: "w@example.com", color: "#1971C2")])
         try box.write(#"{"lastKnownAccountUuid":"\#(Sandbox.accountB)"}"#, to: box.work.appending(path: "config.json"))
-        try FileManager.default.createDirectory(at: box.work.appending(path: "local-agent-mode-sessions/\(Sandbox.accountB)/\(org)"),
+        try FileManager.default.createDirectory(at: box.work.appending(path: "spaces-present/\(Sandbox.accountB)/\(org)"),
                                                 withIntermediateDirectories: true)
         let main = try box.pair(box.main, account: Sandbox.accountA)
         try box.write(#"{"title":"one"}"#, to: main.appending(path: "local_1.json"))
@@ -309,5 +309,6 @@ struct OrganizationTests {
 
         let folder = box.work.appending(path: "claude-code-sessions/\(Sandbox.accountB)/\(org)")
         #expect(box.read(folder.appending(path: "local_1.json")) == #"{"title":"one"}"#, "shared before the window restarts")
+        #expect(box.exists(box.work.appending(path: "local-agent-mode-sessions/\(Sandbox.accountB)/\(org)")))
     }
 }

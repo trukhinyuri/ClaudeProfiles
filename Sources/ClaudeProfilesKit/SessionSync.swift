@@ -19,8 +19,6 @@ public struct SessionSync: Sendable {
         public var changes: Int { cardsWritten + cardsRemoved + tombstonesWritten + archiveIndexesWritten }
     }
 
-    struct Pair: Hashable { let dir: URL }
-
     static let sessionsFolder = "claude-code-sessions"
     static let archiveIndex = "archived-sessions.idx"
 
@@ -48,16 +46,16 @@ public struct SessionSync: Sendable {
         var archiveVersion: Any = 1
 
         for pair in pairs {
-            for url in contents(of: pair.dir) {
+            for url in SyncFolders.contents(of: pair) {
                 let name = url.lastPathComponent
                 if name.hasPrefix("local_"), name.hasSuffix(".json") {
-                    guard let modified = modificationDate(url) else { continue }
+                    guard let modified = SyncFolders.modificationDate(url) else { continue }
                     if let known = cards[name], known.modified >= modified { continue }
                     if let data = try? Data(contentsOf: url) { cards[name] = (modified, data) }
                 } else if name.hasPrefix("deleted_") {
                     tombstones.insert(name)
                 } else if name == Self.archiveIndex, let index = readJSON(url) {
-                    archiveLists[pair.dir.path] = Set(index["archived"] as? [String] ?? [])
+                    archiveLists[pair.path] = Set(index["archived"] as? [String] ?? [])
                     archiveVersion = index["v"] ?? archiveVersion
                 }
             }
@@ -76,15 +74,15 @@ public struct SessionSync: Sendable {
 
         let backup = Backup(paths: paths, now: now)
         for pair in pairs {
-            let present = Set(contents(of: pair.dir).map(\.lastPathComponent))
+            let present = Set(SyncFolders.contents(of: pair).map(\.lastPathComponent))
             for (name, card) in cards {
-                let target = pair.dir.appending(path: name)
+                let target = pair.appending(path: name)
                 if present.contains(name) {
-                    guard let modified = modificationDate(target), modified < card.modified.addingTimeInterval(-1),
+                    guard let modified = SyncFolders.modificationDate(target), modified < card.modified.addingTimeInterval(-1),
                           (try? Data(contentsOf: target)) != card.data else { continue }
                     if try backup.save(target) { report.backedUp += 1 }
                     // Claude may have just updated this copy; never replace a newer card with an older one.
-                    guard let latest = modificationDate(target), latest < card.modified.addingTimeInterval(-1) else { continue }
+                    guard let latest = SyncFolders.modificationDate(target), latest < card.modified.addingTimeInterval(-1) else { continue }
                 }
                 try card.data.write(to: target, options: .atomic)
                 try? fm.setAttributes([.modificationDate: card.modified], ofItemAtPath: target.path)
@@ -92,19 +90,19 @@ public struct SessionSync: Sendable {
             }
             if propagateDeletions {
                 for tombstone in tombstones where !present.contains(tombstone) {
-                    fm.createFile(atPath: pair.dir.appending(path: tombstone).path, contents: Data())
+                    fm.createFile(atPath: pair.appending(path: tombstone).path, contents: Data())
                     report.tombstonesWritten += 1
                 }
                 for name in present where name.hasPrefix("local_") && name.hasSuffix(".json") && cards[name] == nil {
-                    let target = pair.dir.appending(path: name)
+                    let target = pair.appending(path: name)
                     if try backup.save(target, everyTime: true) { report.backedUp += 1 }
                     try fm.removeItem(at: target)
                     report.cardsRemoved += 1
                 }
             }
-            let url = pair.dir.appending(path: Self.archiveIndex)
+            let url = pair.appending(path: Self.archiveIndex)
             if !archived.isEmpty {
-                if archiveLists[pair.dir.path] != archived {
+                if archiveLists[pair.path] != archived {
                     if fm.fileExists(atPath: url.path), try backup.save(url) { report.backedUp += 1 }
                     let object: [String: Any] = ["v": archiveVersion, "archived": archived.sorted()]
                     try JSONSerialization.data(withJSONObject: object).write(to: url, options: .atomic)
@@ -117,31 +115,7 @@ public struct SessionSync: Sendable {
     }
 
     /// Every `<account>/<organization>` session directory across all data directories.
-    func pairs() -> [Pair] {
-        var result: [Pair] = []
-        for dataDir in dataDirs {
-            let sessions = dataDir.appending(path: Self.sessionsFolder, directoryHint: .isDirectory)
-            for account in contents(of: sessions) where account.lastPathComponent.count == 36 && isRealDirectory(account) {
-                for org in contents(of: account) where !org.lastPathComponent.hasPrefix(".") && isRealDirectory(org) {
-                    result.append(Pair(dir: org))
-                }
-            }
-        }
-        return result
-    }
-
-    private func contents(of dir: URL) -> [URL] {
-        (try? fm.contentsOfDirectory(at: dir, includingPropertiesForKeys: nil)) ?? []
-    }
-
-    private func isRealDirectory(_ url: URL) -> Bool {
-        let values = try? url.resourceValues(forKeys: [.isDirectoryKey, .isSymbolicLinkKey])
-        return values?.isDirectory == true && values?.isSymbolicLink != true
-    }
-
-    private func modificationDate(_ url: URL) -> Date? {
-        try? url.resourceValues(forKeys: [.contentModificationDateKey]).contentModificationDate
-    }
+    func pairs() -> [URL] { SyncFolders.pairs(dataDirs: dataDirs, folder: Self.sessionsFolder) }
 
     private func readJSON(_ url: URL) -> [String: Any]? {
         guard let data = try? Data(contentsOf: url) else { return nil }

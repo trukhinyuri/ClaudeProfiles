@@ -10,7 +10,7 @@ USAGE
                                                  Create a profile and open it to sign in
   claude-profiles open <profile>                Open a profile's window (id or label)
   claude-profiles remove <profile>              Quit it and move its copy and sign-in to the Trash
-  claude-profiles sync                          Share Claude Code sessions across profiles now
+  claude-profiles sync                          Share Claude Code and Cowork sessions across profiles now
   claude-profiles refresh                       Rebuild app copies after a Claude Desktop update
 """
 
@@ -71,7 +71,8 @@ do {
         print("Moved Claude \(profile.label) to the Trash. Its sessions stay available in other profiles.")
     case "sync":
         guard let r = try manager.syncSessions() else { fail("another sync is running; try again in a moment") }
-        print("\(r.pairs) session folders · \(r.cardsWritten) cards copied · \(r.cardsRemoved) removed · \(r.tombstonesWritten) deletions shared")
+        print("\(r.sessions.pairs) session folders · \(r.sessions.cardsWritten) cards copied · \(r.sessions.cardsRemoved) removed · \(r.sessions.tombstonesWritten) deletions shared")
+        print("\(r.cowork.pairs) cowork folders · \(r.cowork.cardsWritten) cards copied · \(r.cowork.cardsRemoved) removed")
     case "refresh":
         try manager.refresh()
         print("Profiles are up to date with Claude Desktop.")

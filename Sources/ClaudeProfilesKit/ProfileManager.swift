@@ -49,6 +49,13 @@ public struct ProfileStatus: Identifiable, Equatable, Sendable {
     }
 }
 
+/// What one call to `ProfileManager.syncSessions()` did.
+public struct SyncReport: Equatable, Sendable {
+    public var sessions: SessionSync.Report
+    public var cowork: CoworkSync.Report
+    public var changes: Int { sessions.changes + cowork.changes }
+}
+
 /// Creates, opens and removes profiles. Every operation is local to this Mac.
 public final class ProfileManager: @unchecked Sendable {
     public let paths: Paths
@@ -245,25 +252,30 @@ public final class ProfileManager: @unchecked Sendable {
         }
     }
 
-    /// Shares Claude Code sessions across all profiles.
+    /// Shares Claude Code sessions and Cowork sessions across all profiles.
     /// - Returns: `nil` if another sync (from the app or the CLI) is already running.
     @discardableResult
-    public func syncSessions() throws -> SessionSync.Report? {
+    public func syncSessions() throws -> SyncReport? {
         try FileLock.withLock(paths.stateDir.appending(path: "sync.lock"), blocking: false) {
             createSessionFolders()
-            return try SessionSync(paths: paths, dataDirs: dataDirs).run(propagateDeletions: !isAnyClaudeRunning)
+            let propagateDeletions = !isAnyClaudeRunning
+            let sessions = try SessionSync(paths: paths, dataDirs: dataDirs).run(propagateDeletions: propagateDeletions)
+            let cowork = try CoworkSync(paths: paths, dataDirs: dataDirs).run(propagateDeletions: propagateDeletions)
+            return SyncReport(sessions: sessions, cowork: cowork)
         }
     }
 
-    /// Claude Desktop creates a signed-in account's session folder only when that account starts its first
-    /// session, and reads it only at launch. Creating it right away lets sharing fill it before the next launch.
+    /// Claude Desktop creates a signed-in account's session folders only when that account starts its first
+    /// session, and reads them only at launch. Creating them right away lets sharing fill them before the next launch.
     func createSessionFolders() {
         for dataDir in dataDirs {
             guard let account = DesktopData.accountID(in: dataDir),
                   let org = DesktopData.organizationID(in: dataDir, accountID: account) else { continue }
-            let folder = dataDir.appending(path: "\(SessionSync.sessionsFolder)/\(account)/\(org)", directoryHint: .isDirectory)
-            if !fm.fileExists(atPath: folder.path) {
-                try? fm.createDirectory(at: folder, withIntermediateDirectories: true)
+            for kind in [SessionSync.sessionsFolder, CoworkSync.sessionsFolder] {
+                let folder = dataDir.appending(path: "\(kind)/\(account)/\(org)", directoryHint: .isDirectory)
+                if !fm.fileExists(atPath: folder.path) {
+                    try? fm.createDirectory(at: folder, withIntermediateDirectories: true)
+                }
             }
         }
     }
