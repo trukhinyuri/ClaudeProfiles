@@ -192,12 +192,17 @@ public final class ProfileManager: @unchecked Sendable {
             return
         }
         try lock.withLock {
+            // It may have been removed while this call waited for the lock.
+            guard profiles.contains(where: { $0.id == id }) else { throw ProfileError.notFound(id) }
             if !fm.fileExists(atPath: engine.path) || engineIsOutdated(profile.id) {
                 try buildEngine(for: profile)
             }
+            // The app and the CLI may open a profile at the same moment; the merges read and write without Claude's locks.
+            _ = try FileLock.withLock(paths.stateDir.appending(path: "open.lock"), blocking: true) {
+                _ = try? SettingsSync(paths: paths).run(into: paths.dataDir(for: profile.id))
+                _ = try? InterfaceSync(paths: paths).run(into: paths.dataDir(for: profile.id), profileID: profile.id)
+            }
         }
-        _ = try? SettingsSync(paths: paths).run(into: paths.dataDir(for: profile.id))
-        _ = try? InterfaceSync(paths: paths).run(into: paths.dataDir(for: profile.id), profileID: profile.id)
         let configuration = NSWorkspace.OpenConfiguration()
         configuration.createsNewApplicationInstance = true
         configuration.arguments = ["--user-data-dir=\(paths.dataDir(for: profile.id).path)"]
@@ -292,11 +297,12 @@ public final class ProfileManager: @unchecked Sendable {
         _ = try? syncSessions()
         let engine = paths.engine(for: id).standardizedFileURL
         let running = claudeProcesses().filter { $0.bundleURL?.standardizedFileURL == engine }
+        guard !running.isEmpty else { return }   // closed already: it picks everything up when opened
         running.forEach { $0.terminate() }
         for _ in 0..<100 where running.contains(where: { !$0.isTerminated }) {
             try await Task.sleep(for: .milliseconds(200))
         }
-        guard running.allSatisfy(\.isTerminated) else { return }
+        guard running.allSatisfy(\.isTerminated), profiles.contains(where: { $0.id == id }) else { return }
         _ = try? syncSessions()
         try await open(id)
     }

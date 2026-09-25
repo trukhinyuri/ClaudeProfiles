@@ -11,21 +11,53 @@ import Foundation
 /// throw.
 public struct LocalStorage: Sendable {
     public let dataDir: URL
-    private var fm: FileManager { .default }
 
     public init(dataDir: URL) { self.dataDir = dataDir }
 
     /// `<dataDir>/Local Storage/leveldb`
     public var dbDir: URL { dataDir.appending(path: "Local Storage/leveldb", directoryHint: .isDirectory) }
 
-    public var exists: Bool {
-        fm.fileExists(atPath: dbDir.appending(path: "CURRENT").path)
+    var store: LevelDBStore { LevelDBStore(dir: dbDir) }
+
+    public var exists: Bool { store.exists }
+
+    /// Whether another process holds the database's LevelDB `LOCK`.
+    public var isInUse: Bool { store.isInUse }
+
+    /// Every live key/value pair stored under `origin`, decoded to strings.
+    public func items(origin: String) throws -> [String: String] {
+        let live = try store.liveEntries()
+        let prefix = ChromiumKey.originPrefix(origin)
+        var result: [String: String] = [:]
+        for (key, value) in live where key.starts(with: prefix) {
+            let encodedKey = Array(key.dropFirst(prefix.count))
+            guard let decodedKey = ChromiumKey.decodeString(encodedKey),
+                  let decodedValue = ChromiumKey.decodeString(value) else { continue }
+            result[decodedKey] = decodedValue
+        }
+        return result
     }
 
-    /// Whether another process holds the database's LevelDB `LOCK`, tested the way LevelDB itself locks it:
+    /// Appends one atomic batch of sets and removals for `origin`'s keys as a new log file. Never touches
+    /// an existing file. Throws if the database is missing or another process has it open.
+    public func update(origin: String, set: [String: String], remove: Set<String>) throws {
+        let prefix = ChromiumKey.originPrefix(origin)
+        try store.append(put: set.map { (prefix + ChromiumKey.encodeString($0.key), ChromiumKey.encodeString($0.value)) },
+                         delete: remove.map { prefix + ChromiumKey.encodeString($0) })
+    }
+}
+
+/// A LevelDB database directory, read and appended to without opening it the way LevelDB does.
+struct LevelDBStore: Sendable {
+    let dir: URL
+    private var fm: FileManager { .default }
+
+    var exists: Bool { fm.fileExists(atPath: dir.appending(path: "CURRENT").path) }
+
+    /// Whether another process holds the database's `LOCK`, tested the way LevelDB itself locks it:
     /// an `fcntl` `F_SETLK` write lock and a `flock(LOCK_EX | LOCK_NB)`, both released right after the check.
-    public var isInUse: Bool {
-        let path = dbDir.appending(path: "LOCK").path
+    var isInUse: Bool {
+        let path = dir.appending(path: "LOCK").path
         let fd = open(path, O_RDWR)
         guard fd >= 0 else { return false }
         defer { close(fd) }
@@ -46,66 +78,59 @@ public struct LocalStorage: Sendable {
         return false
     }
 
-    /// Every live key/value pair stored under `origin`, decoded to strings.
-    public func items(origin: String) throws -> [String: String] {
-        let db = try LevelDBDatabase(dir: dbDir)
-        let live = try db.liveEntries().values
-        let prefix = ChromiumKey.originPrefix(origin)
-        var result: [String: String] = [:]
-        for (key, value) in live where key.starts(with: prefix) {
-            let encodedKey = Array(key.dropFirst(prefix.count))
-            guard let decodedKey = ChromiumKey.decodeString(encodedKey),
-                  let decodedValue = ChromiumKey.decodeString(value) else { continue }
-            result[decodedKey] = decodedValue
-        }
-        return result
+    /// Every live key and its value.
+    func liveEntries() throws -> [[UInt8]: [UInt8]] {
+        try LevelDBDatabase(dir: dir).liveEntries().values
     }
 
-    /// Appends one atomic batch of sets and removals for `origin`'s keys as a new log file. Never touches
-    /// an existing file. Throws if the database is missing or another process has it open.
+    /// Appends one atomic batch of puts and deletions as a new log file. Never touches an existing file.
+    /// Throws if the database is missing or another process has it open.
     ///
     /// The lock is checked once, not held: holding it would make a Claude window starting at that moment
     /// fail to open its database. A window that opens it during the update simply doesn't see the new
     /// file until its next start; nothing that was already there is affected.
-    public func update(origin: String, set: [String: String], remove: Set<String>) throws {
+    func append(put: [([UInt8], [UInt8])], delete: [[UInt8]]) throws {
         guard exists else { throw LocalStorageError.notFound }
         guard !isInUse else { throw LocalStorageError.databaseInUse }
-        guard !set.isEmpty || !remove.isEmpty else { return }
+        guard !put.isEmpty || !delete.isEmpty else { return }
 
-        let db = try LevelDBDatabase(dir: dbDir)
+        let db = try LevelDBDatabase(dir: dir)
         let live = try db.liveEntries()
-        let newFileNumber = max(db.state.nextFileNumber, db.highestFileNumberOnDisk) + 1
+        // Opening the database, LevelDB writes each older log it replays to a table numbered from the manifest's
+        // next file number; the gap keeps those numbers apart from this log's.
+        let newFileNumber = max(db.state.nextFileNumber, db.highestFileNumberOnDisk) + Self.fileNumberGap
         let newSequence = max(db.state.lastSequence, live.highestSequence) + 1
 
-        let prefix = ChromiumKey.originPrefix(origin)
         var payload = ByteWriter()
         payload.appendFixed64(newSequence)
-        payload.appendFixed32(UInt32(set.count + remove.count))
-        for (key, value) in set {
+        payload.appendFixed32(UInt32(put.count + delete.count))
+        for (key, value) in put {
             payload.appendByte(LevelDBValueType.value)
-            payload.appendLengthPrefixed(prefix + ChromiumKey.encodeString(key))
-            payload.appendLengthPrefixed(ChromiumKey.encodeString(value))
+            payload.appendLengthPrefixed(key)
+            payload.appendLengthPrefixed(value)
         }
-        for key in remove {
+        for key in delete {
             payload.appendByte(LevelDBValueType.deletion)
-            payload.appendLengthPrefixed(prefix + ChromiumKey.encodeString(key))
+            payload.appendLengthPrefixed(key)
         }
 
         let fileName = LevelDBDatabase.fileName(number: newFileNumber, suffix: "log")
-        let finalURL = dbDir.appending(path: fileName)
-        let tmpURL = dbDir.appending(path: ".\(fileName).tmp-\(UUID().uuidString.prefix(8))")
-        let bytes = LogFormat.writeRecords(payload: payload.bytes)
-        try writeAtomically(bytes, tmpURL: tmpURL, finalURL: finalURL)
+        let finalURL = dir.appending(path: fileName)
+        let tmpURL = dir.appending(path: ".\(fileName).tmp-\(UUID().uuidString.prefix(8))")
+        try writeAtomically(LogFormat.writeRecords(payload: payload.bytes), tmpURL: tmpURL, finalURL: finalURL)
     }
 
+    static let fileNumberGap: UInt64 = 100
+
     private func writeAtomically(_ bytes: [UInt8], tmpURL: URL, finalURL: URL) throws {
-        fm.createFile(atPath: tmpURL.path, contents: nil)
+        // Private to the user, like the files Chromium writes.
+        fm.createFile(atPath: tmpURL.path, contents: nil, attributes: [.posixPermissions: 0o600])
         let handle = try FileHandle(forWritingTo: tmpURL)
         try handle.write(contentsOf: Data(bytes))
         try handle.synchronize()
         try handle.close()
         try fm.moveItem(at: tmpURL, to: finalURL)
-        let dirFD = open(dbDir.path, O_RDONLY)
+        let dirFD = open(dir.path, O_RDONLY)
         if dirFD >= 0 { fsync(dirFD); close(dirFD) }
     }
 }

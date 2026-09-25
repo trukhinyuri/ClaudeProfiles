@@ -26,7 +26,9 @@ enum SyncFolders {
         return values?.isDirectory == true && values?.isSymbolicLink != true
     }
 
+    /// Read from the file system each time: `URL` caches resource values, which would hide a write Claude has
+    /// just made.
     static func modificationDate(_ url: URL) -> Date? {
-        try? url.resourceValues(forKeys: [.contentModificationDateKey]).contentModificationDate
+        (try? FileManager.default.attributesOfItem(atPath: url.path))?[.modificationDate] as? Date
     }
 }

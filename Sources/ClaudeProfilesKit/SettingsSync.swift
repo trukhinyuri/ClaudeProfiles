@@ -43,14 +43,21 @@ public struct SettingsSync: Sendable {
 
         changed += try copyBuilds(into: dataDir)
 
-        if try mergeJSON("claude_desktop_config.json", into: dataDir, backup: backup, adjust: { config in
+        if try mergeJSON("claude_desktop_config.json", into: dataDir, backup: backup, adjust: { config, current in
             var preferences = config["preferences"] as? [String: Any] ?? [:]
             for key in Self.schedulerPreferences { preferences[key] = false }
+            // Interface settings here are shared by InterfaceSync, per account and keeping changes made only in the profile.
+            if var prefs = preferences["epitaxyPrefs"] as? [String: Any] {
+                let own = (current["preferences"] as? [String: Any])?["epitaxyPrefs"] as? [String: Any] ?? [:]
+                prefs = prefs.filter { !InterfaceSync.sharesPref($0.key) }
+                for (key, value) in own where InterfaceSync.sharesPref(key) { prefs[key] = value }
+                preferences["epitaxyPrefs"] = prefs
+            }
             config["preferences"] = preferences
         }) { changed += 1 }
 
         // Tool toggles are kept per account; the profile's account gets the ones chosen in the main app.
-        if try mergeJSON("mcp-user-tool-toggles.json", into: dataDir, backup: backup, adjust: { toggles in
+        if try mergeJSON("mcp-user-tool-toggles.json", into: dataDir, backup: backup, adjust: { toggles, _ in
             guard let mainAccount, let account, var owners = toggles["owners"] as? [String: Any],
                   let chosen = owners[mainAccount] else { return }
             owners[account] = chosen
@@ -80,14 +87,15 @@ public struct SettingsSync: Sendable {
         return copied
     }
 
-    /// Merges `name` from the main app into the profile, applies `adjust`, and writes it if anything changed.
+    /// Merges `name` from the main app into the profile, applies `adjust` (which also gets the profile's
+    /// current contents), and writes it if anything changed.
     private func mergeJSON(_ name: String, into dataDir: URL, backup: Backup,
-                           adjust: (inout [String: Any]) -> Void) throws -> Bool {
+                           adjust: (inout [String: Any], [String: Any]) -> Void) throws -> Bool {
         let from = paths.mainDataDir.appending(path: name), to = dataDir.appending(path: name)
         guard let main = Self.readJSON(from) else { return false }
         let current = Self.readJSON(to) ?? [:]
         var result = Self.merge(current, main)
-        adjust(&result)
+        adjust(&result, current)
         guard !NSDictionary(dictionary: result).isEqual(to: current) else { return false }
         if fm.fileExists(atPath: to.path) { _ = try backup.save(to) }
         try JSONSerialization.data(withJSONObject: result, options: [.prettyPrinted, .sortedKeys]).write(to: to, options: .atomic)

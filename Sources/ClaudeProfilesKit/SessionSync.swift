@@ -74,18 +74,28 @@ public struct SessionSync: Sendable {
 
         let backup = Backup(paths: paths, now: now)
         for pair in pairs {
+            // As given, not as listed: Claude writes paths with the data directory it was started with.
+            let listed = pair.resolvingSymlinksInPath().path
+            let dataDir = dataDirs.first { listed.hasPrefix($0.resolvingSymlinksInPath().path + "/") }
+                ?? pair.deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent()
             let present = Set(SyncFolders.contents(of: pair).map(\.lastPathComponent))
             for (name, card) in cards {
                 let target = pair.appending(path: name)
+                var data = localized(card.data, for: dataDir), modified = card.modified
                 if present.contains(name) {
-                    guard let modified = SyncFolders.modificationDate(target), modified < card.modified.addingTimeInterval(-1),
-                          (try? Data(contentsOf: target)) != card.data else { continue }
+                    guard let current = SyncFolders.modificationDate(target), let own = try? Data(contentsOf: target) else { continue }
+                    if current >= card.modified.addingTimeInterval(-1) {
+                        // This copy is as new as any; it may still need this window's scratch folder path.
+                        data = localized(own, for: dataDir)
+                        modified = current
+                    }
+                    guard own != data else { continue }
                     if try backup.save(target) { report.backedUp += 1 }
                     // Claude may have just updated this copy; never replace a newer card with an older one.
-                    guard let latest = SyncFolders.modificationDate(target), latest < card.modified.addingTimeInterval(-1) else { continue }
+                    guard SyncFolders.modificationDate(target) == current, (try? Data(contentsOf: target)) == own else { continue }
                 }
-                try card.data.write(to: target, options: .atomic)
-                try? fm.setAttributes([.modificationDate: card.modified], ofItemAtPath: target.path)
+                try data.write(to: target, options: .atomic)
+                try? fm.setAttributes([.modificationDate: modified], ofItemAtPath: target.path)
                 report.cardsWritten += 1
             }
             if propagateDeletions {
@@ -112,6 +122,27 @@ public struct SessionSync: Sendable {
         }
         backup.prune()
         return report
+    }
+
+    /// A session started in a "No folder" scratch workspace keeps that folder in the data directory of the window
+    /// that started it. Claude shows a session as one only when `originCwd` is inside its own data directory, so
+    /// each window's copy of the card names that window's data directory there. `cwd`, where the session actually
+    /// runs and where its conversation is filed, stays the same everywhere.
+    func localized(_ card: Data, for dataDir: URL) -> Data {
+        let key = Data(#""originCwd":""#.utf8)
+        guard let keyRange = card.range(of: key),
+              let end = card[keyRange.upperBound...].firstIndex(of: UInt8(ascii: "\"")),
+              let value = String(data: card[keyRange.upperBound..<end], encoding: .utf8), !value.contains("\\")
+        else { return card }
+        let folder = "/scratch-workspaces/"
+        for dir in dataDirs where value.hasPrefix(dir.path + folder) {
+            let path = dataDir.path + folder + value.dropFirst(dir.path.count + folder.count)
+            guard path != value else { return card }
+            var result = card
+            result.replaceSubrange(keyRange.upperBound..<end, with: Data(path.utf8))
+            return result
+        }
+        return card
     }
 
     /// Every `<account>/<organization>` session directory across all data directories.
@@ -153,6 +184,17 @@ struct Backup {
         try FileManager.default.createDirectory(at: target.deletingLastPathComponent(), withIntermediateDirectories: true)
         try FileManager.default.copyItem(at: url, to: target)
         return true
+    }
+
+    /// Writes `values` as JSON to `relative` in today's folder, for data that can't be copied as a file.
+    /// Every call gets its own file.
+    func saveValues(_ values: [String: Any], as relative: String) throws {
+        var target = dayDir.appending(path: relative)
+        if FileManager.default.fileExists(atPath: target.path) {
+            target = target.deletingLastPathComponent().appending(path: "\(Int(now.timeIntervalSince1970 * 1000))-\(UUID().uuidString.prefix(8))-\(target.lastPathComponent)")
+        }
+        try FileManager.default.createDirectory(at: target.deletingLastPathComponent(), withIntermediateDirectories: true)
+        try JSONSerialization.data(withJSONObject: values, options: [.prettyPrinted, .sortedKeys]).write(to: target, options: .atomic)
     }
 
     /// Moves backup day folders older than `keepDays` to the Trash.

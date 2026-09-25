@@ -106,6 +106,31 @@ struct SessionSyncTests {
         }
     }
 
+    /// A "No folder" session keeps its scratch folder in the data directory of the window that started it; each
+    /// window's copy has to name that window's data directory for Claude to show it as one.
+    @Test func scratchSessionsNameEachWindowsOwnDataDirectory() throws {
+        let box = try Sandbox()
+        let a = try box.pair(box.main, account: Sandbox.accountA)
+        let b = try box.pair(box.work, account: Sandbox.accountB)
+        let scratch = { (dir: URL) in dir.path + "/scratch-workspaces/\(Sandbox.accountA)/org-1/abc" }
+        let card = { (origin: URL) in #"{"cwd":"\#(scratch(box.main))","originCwd":"\#(scratch(origin))","title":"t"}"# }
+        let modified = Date().addingTimeInterval(-600)
+        try box.write(card(box.main), to: a.appending(path: "local_1.json"), modified: modified)
+        // Copied before this was handled: the same card, with the same date, in the profile.
+        try box.write(card(box.main), to: b.appending(path: "local_1.json"), modified: modified)
+        try box.write(card(box.work), to: b.appending(path: "local_2.json"), modified: modified)
+
+        let report = try box.sync()
+
+        #expect(box.read(a.appending(path: "local_1.json")) == card(box.main))
+        #expect(box.read(b.appending(path: "local_1.json")) == card(box.work), "cwd stays, originCwd moves")
+        #expect(box.read(a.appending(path: "local_2.json")) == card(box.main))
+        #expect(report.cardsWritten == 2)
+        #expect(SyncFolders.modificationDate(b.appending(path: "local_1.json")).map { abs($0.timeIntervalSince(modified)) < 1 } == true,
+                "the card's date isn't changed, so it doesn't look newer than it is")
+        #expect(try box.sync().changes == 0, "a second run has nothing to do")
+    }
+
     @Test func ignoresSymlinksAndForeignFolders() throws {
         let box = try Sandbox()
         let a = try box.pair(box.main, account: Sandbox.accountA)
@@ -300,7 +325,7 @@ struct OrganizationTests {
         let org = "33333333-3333-3333-3333-333333333333"
         try ProfileRegistry(paths: box.paths).save([Profile(id: "work", label: "WORK", email: "w@example.com", color: "#1971C2")])
         try box.write(#"{"lastKnownAccountUuid":"\#(Sandbox.accountB)"}"#, to: box.work.appending(path: "config.json"))
-        try FileManager.default.createDirectory(at: box.work.appending(path: "spaces-present/\(Sandbox.accountB)/\(org)"),
+        try FileManager.default.createDirectory(at: box.work.appending(path: "local-agent-mode-sessions/\(Sandbox.accountB)/\(org)"),
                                                 withIntermediateDirectories: true)
         let main = try box.pair(box.main, account: Sandbox.accountA)
         try box.write(#"{"title":"one"}"#, to: main.appending(path: "local_1.json"))
@@ -309,6 +334,17 @@ struct OrganizationTests {
 
         let folder = box.work.appending(path: "claude-code-sessions/\(Sandbox.accountB)/\(org)")
         #expect(box.read(folder.appending(path: "local_1.json")) == #"{"title":"one"}"#, "shared before the window restarts")
-        #expect(box.exists(box.work.appending(path: "local-agent-mode-sessions/\(Sandbox.accountB)/\(org)")))
+    }
+
+    @Test func organizationIsComparedAcrossSessionKinds() throws {
+        let box = try Sandbox()
+        let older = "11111111-1111-1111-1111-111111111111", newer = "22222222-2222-2222-2222-222222222222"
+        let fm = FileManager.default
+        try box.pair(box.work, account: Sandbox.accountB, org: older)
+        let cowork = box.work.appending(path: "local-agent-mode-sessions/\(Sandbox.accountB)/\(newer)")
+        try fm.createDirectory(at: cowork, withIntermediateDirectories: true)
+        try fm.setAttributes([.modificationDate: Date().addingTimeInterval(-3600)],
+                             ofItemAtPath: box.work.appending(path: "claude-code-sessions/\(Sandbox.accountB)/\(older)").path)
+        #expect(DesktopData.organizationID(in: box.work, accountID: Sandbox.accountB) == newer)
     }
 }
