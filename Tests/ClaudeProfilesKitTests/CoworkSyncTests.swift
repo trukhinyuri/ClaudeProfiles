@@ -124,4 +124,23 @@ struct CoworkSyncTests {
         #expect(box.read(a.appending(path: "local_x.json")) == "v2", "the edit outlives the deletion seen in a")
         #expect(report.cardsRemoved == 0)
     }
+
+    @Test func removedProfilesSessionsLeaveOtherWindows() throws {
+        let box = try Sandbox()
+        let a = try box.coworkPair(box.main, account: Sandbox.accountA)
+        let b = try box.coworkPair(box.work, account: Sandbox.accountB)
+        let fromWork = #"{"cwd":"\#(b.path)/local_w"}"#, fromMain = #"{"cwd":"\#(a.path)/local_m"}"#
+        for dir in [a, b] {
+            try box.write(fromWork, to: dir.appending(path: "local_w.json"))
+            try box.write(fromMain, to: dir.appending(path: "local_m.json"))
+        }
+
+        let removed = try CoworkSync(paths: box.paths, dataDirs: [box.main]).removeCards(workingIn: box.work)
+
+        #expect(removed == 1)
+        #expect(!box.exists(a.appending(path: "local_w.json")), "its files went to the Trash with the profile")
+        #expect(box.read(a.appending(path: "local_m.json")) == fromMain)
+        let backedUp = try FileManager.default.subpathsOfDirectory(atPath: box.paths.backupsDir.path)
+        #expect(backedUp.contains { $0.hasSuffix("local_w.json") })
+    }
 }

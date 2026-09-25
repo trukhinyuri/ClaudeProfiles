@@ -197,6 +197,7 @@ public final class ProfileManager: @unchecked Sendable {
             }
         }
         _ = try? SettingsSync(paths: paths).run(into: paths.dataDir(for: profile.id))
+        _ = try? InterfaceSync(paths: paths).run(into: paths.dataDir(for: profile.id), profileID: profile.id)
         let configuration = NSWorkspace.OpenConfiguration()
         configuration.createsNewApplicationInstance = true
         configuration.arguments = ["--user-data-dir=\(paths.dataDir(for: profile.id).path)"]
@@ -210,7 +211,8 @@ public final class ProfileManager: @unchecked Sendable {
     // MARK: Remove
 
     /// Quits the profile's window and moves its app copy and data (including its sign-in) to the Trash.
-    /// Sessions stay available in every other profile.
+    /// Claude Code sessions stay available in every other profile. Cowork sessions keep their files in the
+    /// profile's data, so the ones started in it go to the Trash with it and leave the other windows too.
     public func remove(_ id: String) async throws {
         guard let profile = profiles.first(where: { $0.id == id }) else { throw ProfileError.notFound(id) }
         let engine = paths.engine(for: id).standardizedFileURL
@@ -225,11 +227,13 @@ public final class ProfileManager: @unchecked Sendable {
         _ = try? syncSessions()
 
         try lock.withLock {
-            for url in [paths.launcher(for: profile), paths.engine(for: id), paths.dataDir(for: id)] where fm.fileExists(atPath: url.path) {
+            let remembered = InterfaceSync(paths: paths).stateFile(for: id)
+            for url in [paths.launcher(for: profile), paths.engine(for: id), paths.dataDir(for: id), remembered] where fm.fileExists(atPath: url.path) {
                 try fm.trashItem(at: url, resultingItemURL: nil)
             }
             try registry.save(try registry.load().filter { $0.id != id })
         }
+        _ = try? CoworkSync(paths: paths, dataDirs: dataDirs).removeCards(workingIn: paths.dataDir(for: id))
         if signInRouting.state?.profileID == id { signInRouting.end(allProfileIDs: profiles.map(\.id)) }
     }
 

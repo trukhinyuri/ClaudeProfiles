@@ -108,9 +108,30 @@ public struct CoworkSync: Sendable {
         state.lastRun = now
         state.present = nextPresent.mapValues { Array($0).sorted() }
         state.deletedIn = deletedIn.mapValues { Array($0.intersection(stillAround)).sorted() }.filter { !$0.value.isEmpty }
-        try? state.save(to: stateFile)
+        try state.save(to: stateFile)
 
         return report
+    }
+
+    /// Removes, from every folder, the cards of sessions whose working folder is inside `dataDir`: a removed
+    /// profile's Cowork sessions go to the Trash with it and can't be opened from other windows. Each card is backed up.
+    /// - Returns: how many cards were removed.
+    @discardableResult
+    public func removeCards(workingIn dataDir: URL, now: Date = Date()) throws -> Int {
+        let inside = dataDir.standardizedFileURL.path + "/"
+        let backup = Backup(paths: paths, now: now)
+        var removed = 0
+        for pair in pairs() {
+            for url in SyncFolders.contents(of: pair) where url.lastPathComponent.hasPrefix("local_") && url.pathExtension == "json" {
+                guard let data = try? Data(contentsOf: url),
+                      let card = (try? JSONSerialization.jsonObject(with: data)) as? [String: Any],
+                      let cwd = card["cwd"] as? String, cwd.hasPrefix(inside) else { continue }
+                _ = try backup.save(url, everyTime: true)
+                try fm.removeItem(at: url)
+                removed += 1
+            }
+        }
+        return removed
     }
 
     /// Every `<account>/<organization>` Cowork directory across all data directories.

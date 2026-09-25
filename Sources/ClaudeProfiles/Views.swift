@@ -215,7 +215,7 @@ struct ContentView: View {
             Button("Remove", role: .destructive) { model.remove(status) }
             Button("Cancel", role: .cancel) {}
         } message: { _ in
-            Text("Its window closes and its app copy and sign-in move to the Trash. Your sessions stay available in every other window.")
+            Text("Its window closes and its app copy and sign-in move to the Trash. Your Claude Code sessions stay available in every other window; Cowork sessions started in it move to the Trash with it.")
         }
         .alert("Something went wrong", isPresented: Binding(get: { model.errorMessage != nil }, set: { if !$0 { model.errorMessage = nil } })) {
             Button("OK", role: .cancel) {}
