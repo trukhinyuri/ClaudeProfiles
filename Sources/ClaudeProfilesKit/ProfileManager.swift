@@ -49,6 +49,13 @@ public struct ProfileStatus: Identifiable, Equatable, Sendable {
     }
 }
 
+/// What one call to `ProfileManager.syncSessions()` did.
+public struct SyncReport: Equatable, Sendable {
+    public var sessions: SessionSync.Report
+    public var cowork: CoworkSync.Report
+    public var changes: Int { sessions.changes + cowork.changes }
+}
+
 /// Creates, opens and removes profiles. Every operation is local to this Mac.
 public final class ProfileManager: @unchecked Sendable {
     public let paths: Paths
@@ -245,12 +252,15 @@ public final class ProfileManager: @unchecked Sendable {
         }
     }
 
-    /// Shares Claude Code sessions across all profiles.
+    /// Shares Claude Code sessions and Cowork sessions across all profiles.
     /// - Returns: `nil` if another sync (from the app or the CLI) is already running.
     @discardableResult
-    public func syncSessions() throws -> SessionSync.Report? {
+    public func syncSessions() throws -> SyncReport? {
         try FileLock.withLock(paths.stateDir.appending(path: "sync.lock"), blocking: false) {
-            try SessionSync(paths: paths, dataDirs: dataDirs).run(propagateDeletions: !isAnyClaudeRunning)
+            let propagateDeletions = !isAnyClaudeRunning
+            let sessions = try SessionSync(paths: paths, dataDirs: dataDirs).run(propagateDeletions: propagateDeletions)
+            let cowork = try CoworkSync(paths: paths, dataDirs: dataDirs).run(propagateDeletions: propagateDeletions)
+            return SyncReport(sessions: sessions, cowork: cowork)
         }
     }
 

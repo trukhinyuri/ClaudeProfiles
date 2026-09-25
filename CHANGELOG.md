@@ -1,5 +1,9 @@
 # Changelog
 
+## Unreleased
+
+- Cowork sessions shared across all profiles, the same way Claude Code sessions already are
+
 ## 0.1.0 — 2026-09-25
 
 First public release.

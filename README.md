@@ -31,7 +31,7 @@ Claude Profiles gives every subscription its own Claude window with its own Dock
 
 - **One window per subscription.** Each profile is the official Claude Desktop app running with its own sign-in. No code is patched or injected.
 - **Labeled Dock icons.** `WORK`, `LAB` or `TEAM` on a color of your choice tells you which account a window belongs to. The launchers work from Spotlight too.
-- **Shared sessions.** Claude Code sessions created in any window appear in every window. Deleted and archived sessions stay deleted and archived everywhere.
+- **Shared sessions.** Claude Code and Cowork sessions created in any window appear in every window. Deleted and archived sessions stay deleted and archived everywhere.
 - **Same setup everywhere.** Before a profile window starts, it gets the main app's desktop extensions, MCP servers, tool toggles, SSH hosts and preferences. Sign-ins are never copied.
 - **Usage at a glance.** Five-hour and weekly usage for every subscription, from what Claude Desktop itself records. The one with the most headroom is highlighted.
 - **Knows who is signed in.** Every row shows the email of the account in that window and warns if it is not the one you intended.
@@ -90,7 +90,7 @@ claude-profiles add <email> [--label TEXT] [--color #RRGGBB]
                                                Create a profile and open it to sign in
 claude-profiles open <profile>                Open a profile's window (id or label)
 claude-profiles remove <profile>              Quit it and move its copy and sign-in to the Trash
-claude-profiles sync                          Share Claude Code sessions across profiles now
+claude-profiles sync                          Share Claude Code and Cowork sessions across profiles now
 claude-profiles refresh                       Rebuild app copies after a Claude Desktop update
 ```
 
@@ -107,7 +107,7 @@ The binary ships inside the app: `ln -s ~/Applications/Claude\ Profiles/Claude\ 
 | Profile list and backups | `~/Library/Application Support/Claude Profiles` |
 | Claude Code sessions, settings, skills, memory | `~/.claude` (already shared by every window) |
 
-A profile is Claude Desktop started with its own `--user-data-dir`, which is standard Electron behavior. Session sharing copies the small index cards Claude Desktop keeps for each Claude Code session into every account’s folder; the conversations themselves already live in `~/.claude`. While any Claude window is open, sharing only adds and updates; deletions are spread only when all windows are closed. Every card it removes is backed up first, as is the first version of the day of every card it overwrites; backups older than a week go to the Trash.
+A profile is Claude Desktop started with its own `--user-data-dir`, which is standard Electron behavior. Session sharing copies the small index cards Claude Desktop keeps for each Claude Code session into every account’s folder; the conversations themselves already live in `~/.claude`. Cowork sessions are shared the same way, from their own index cards; since Cowork keeps no deletion marker, Claude Profiles remembers what each folder last held so a card missing from one folder isn’t copied back into it while it might still be deleted there. While any Claude window is open, sharing only adds and updates; deletions are spread only when all windows are closed. Every card it removes is backed up first, as is the first version of the day of every card it overwrites; backups older than a week go to the Trash.
 
 Google sign-in finishes in your browser and comes back to Claude through a `claude://` link, which macOS normally hands to the main Claude app. While a profile window is signing in, Claude Profiles leaves only that window’s app copy registered for those links, and gives them back to the main app as soon as the profile is signed in (or after 15 minutes). The link goes from macOS straight to Claude; Claude Profiles never reads it.
 

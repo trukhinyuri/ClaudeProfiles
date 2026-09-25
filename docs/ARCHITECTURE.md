@@ -51,6 +51,19 @@ Claude Code conversations are stored in `~/.claude/projects` and are the same fo
 
 Symlinking the folders instead of copying doesn’t work: Claude Desktop creates them with `mkdir` and fails on a symlink.
 
+`CoworkSync` shares Cowork sessions the same way, from a differently-shaped folder:
+
+```text
+<data dir>/local-agent-mode-sessions/<account-uuid>/<org-uuid>/
+    local_<session>.json      one card per session, holding absolute paths (works from any account/org folder)
+    local_<session>/          working folder — never copied
+    cowork-*-cache.json, remote-session-spaces.json, scheduled-tasks.json, rpm/, <8 hex chars>/
+                               per-organization files — never copied; a shared scheduled-tasks.json would run
+                               every task in every open window at once
+```
+
+Only `local_*.json` cards move between folders. Cowork keeps no tombstone for a deleted session, so a card that disappears from a folder can't be told apart from one that folder never had without help: `CoworkSync` keeps a small state file, `cowork-sync.json` in the Claude Profiles state directory, recording which cards each folder held after the last run. A card missing from a folder that held it last time is read as deleted there. While any Claude window is open, it is simply not copied back into that folder, and the folder keeps being read that way on every later run; once all windows are closed, it is removed from every folder that still has it (backed up first) — unless some other copy was modified since the last run, in which case that's read as someone still using the session, and it's kept and shared instead of removed. A folder the state file doesn't know about yet (a new profile) is only ever filled, never treated as a source of deletions.
+
 The app syncs at launch and every minute while running (it stays in the menu bar when the window is closed); `claude-profiles sync` does the same on demand. Removing a profile syncs once more after its window quits, so sessions started in it moments ago aren’t lost.
 
 ## Sharing the setup
