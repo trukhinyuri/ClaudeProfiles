@@ -1,0 +1,26 @@
+name: Release
+
+on:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: macos-15
+    steps:
+      - uses: actions/checkout@v4
+      - name: Test
+        run: swift test
+      - name: Build
+        run: scripts/build-app.sh "${GITHUB_REF_NAME#v}"
+      - name: Package
+        run: ditto -c -k --keepParent build/ClaudeUnlimited.app "ClaudeUnlimited-${GITHUB_REF_NAME}.zip"
+      - name: Publish
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          notes=$(awk '/^## /{n++} n==1' CHANGELOG.md | tail -n +2)
+          gh release create "$GITHUB_REF_NAME" "ClaudeUnlimited-${GITHUB_REF_NAME}.zip" --title "ClaudeUnlimited ${GITHUB_REF_NAME}" --notes "$notes"
