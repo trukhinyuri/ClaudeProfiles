@@ -131,6 +131,86 @@ struct SessionSyncTests {
         #expect(try box.sync().changes == 0, "a second run has nothing to do")
     }
 
+    /// With the scratch folder on disk, every other window gets a link to it inside its own data directory and
+    /// names that link as both `cwd` and `originCwd`, which is what Claude needs to offer side questions (`/btw`).
+    @Test func scratchSessionsGetALinkInEveryOtherWindow() throws {
+        let box = try Sandbox()
+        let a = try box.pair(box.main, account: Sandbox.accountA)
+        let b = try box.pair(box.work, account: Sandbox.accountB)
+        let place = "/scratch-workspaces/\(Sandbox.accountA)/org-1/scratch-2026-09-25-abc123"
+        let folder = box.main.path + place, link = box.work.path + place
+        try FileManager.default.createDirectory(atPath: folder, withIntermediateDirectories: true)
+        let card = { (path: String, title: String) in
+            #"{"title":"say \"\#(title)\"","cwd":"\#(path)","originCwd":"\#(path)","nested":{"cwd":"elsewhere","originCwd":"x"}}"#
+        }
+        try box.write(card(folder, "hi"), to: a.appending(path: "local_1.json"))
+
+        try box.sync()
+
+        #expect(box.read(b.appending(path: "local_1.json")) == card(link, "hi"))
+        #expect(try FileManager.default.destinationOfSymbolicLink(atPath: link) == folder)
+        #expect(URL(filePath: link).resolvingSymlinksInPath() == URL(filePath: folder).resolvingSymlinksInPath(),
+                "Claude Code files the conversation under the real folder in every window")
+        #expect(box.read(a.appending(path: "local_1.json")) == card(folder, "hi"), "the window that started it keeps the real folder")
+        #expect(try box.sync().changes == 0, "a second run has nothing to do")
+
+        try box.write(card(link, "again"), to: b.appending(path: "local_1.json"), modified: Date().addingTimeInterval(60))
+        try box.sync()
+        #expect(box.read(a.appending(path: "local_1.json")) == card(folder, "again"), "continued in the profile, still the real folder here")
+
+        let others = box.work.path + "/scratch-workspaces/\(Sandbox.accountA)/org-1"
+        try FileManager.default.createSymbolicLink(atPath: others + "/not-ours", withDestinationPath: "/nowhere/else")
+        try FileManager.default.createSymbolicLink(atPath: others + "/relative", withDestinationPath: "scratch-workspaces/\(Sandbox.accountA)/org-1/relative")
+        try FileManager.default.removeItem(atPath: folder)
+        try box.sync()
+        #expect((try? FileManager.default.attributesOfItem(atPath: link)) == nil, "a link to a folder that's gone is removed")
+        #expect(box.exists(b.appending(path: "local_1.json")), "its card stays")
+        #expect((try? FileManager.default.destinationOfSymbolicLink(atPath: others + "/not-ours")) != nil, "links it didn't make stay")
+        #expect((try? FileManager.default.destinationOfSymbolicLink(atPath: others + "/relative")) != nil)
+    }
+
+    /// The folder may belong to any window, and a card may come back naming the real folder as `cwd` and that
+    /// window's link as `originCwd`. A leftover folder at the same place in another window doesn't make it the owner.
+    @Test func scratchFolderBelongsToTheWindowItsCwdLeadsTo() throws {
+        let box = try Sandbox()
+        let third = box.paths.dataDir(for: "third")
+        let a = try box.pair(box.main, account: Sandbox.accountA)
+        let b = try box.pair(box.work, account: Sandbox.accountB)
+        let c = try box.pair(third, account: "cccccccc-cccc-cccc-cccc-cccccccccccc")
+        let place = "/scratch-workspaces/\(Sandbox.accountB)/org-1/scratch-2026-09-25-0a1b2c"
+        let folder = box.work.path + place, leftover = box.main.path + place, link = third.path + place
+        try FileManager.default.createDirectory(atPath: folder, withIntermediateDirectories: true)
+        try FileManager.default.createDirectory(atPath: leftover, withIntermediateDirectories: true)
+        let card = { (cwd: String, origin: String) in #"{"cwd":"\#(cwd)","originCwd":"\#(origin)","title":"t"}"# }
+        try box.write(card(folder, link), to: c.appending(path: "local_1.json"))
+
+        let sync = SessionSync(paths: box.paths, dataDirs: [box.main, box.work, third])
+        try sync.run(propagateDeletions: false)
+
+        #expect(box.read(b.appending(path: "local_1.json")) == card(folder, folder))
+        #expect(box.read(c.appending(path: "local_1.json")) == card(link, link))
+        #expect(try FileManager.default.destinationOfSymbolicLink(atPath: link) == folder)
+        #expect(box.read(a.appending(path: "local_1.json")) == card(folder, leftover), "with a folder in the way, only originCwd moves")
+        #expect(try sync.run(propagateDeletions: false).changes == 0)
+    }
+
+    @Test func somethingInTheLinksPlaceIsLeftAlone() throws {
+        let box = try Sandbox()
+        let a = try box.pair(box.main, account: Sandbox.accountA)
+        let b = try box.pair(box.work, account: Sandbox.accountB)
+        let place = "/scratch-workspaces/\(Sandbox.accountA)/org-1/scratch-2026-09-25-def456"
+        let folder = box.main.path + place, taken = box.work.path + place
+        try FileManager.default.createDirectory(atPath: folder, withIntermediateDirectories: true)
+        try FileManager.default.createDirectory(atPath: taken, withIntermediateDirectories: true)
+        try box.write(#"{"cwd":"\#(folder)","originCwd":"\#(folder)"}"#, to: a.appending(path: "local_1.json"))
+
+        try box.sync()
+
+        #expect(box.read(b.appending(path: "local_1.json")) == #"{"cwd":"\#(folder)","originCwd":"\#(taken)"}"#,
+                "only originCwd moves, as when there is no folder to link to")
+        #expect((try? FileManager.default.attributesOfItem(atPath: taken)[.type] as? FileAttributeType) == .typeDirectory)
+    }
+
     @Test func ignoresSymlinksAndForeignFolders() throws {
         let box = try Sandbox()
         let a = try box.pair(box.main, account: Sandbox.accountA)
@@ -238,15 +318,26 @@ struct SettingsSyncTests {
         #expect(try sync.run(into: box.work) == 0, "a second run has nothing to do")
     }
 
-    @Test func scheduledTasksStayOffInProfiles() throws {
+    @Test func eachWindowKeepsItsOwnSchedulerSwitches() throws {
         let box = try Sandbox()
         try box.write(#"{"preferences":{"ccdScheduledTasksEnabled":true,"coworkScheduledTasksEnabled":true,"wakeSchedulerEnabled":true}}"#,
                       to: box.main.appending(path: "claude_desktop_config.json"))
         try SettingsSync(paths: box.paths).run(into: box.work)
-        let prefs = try #require(SettingsSync.readJSON(box.work.appending(path: "claude_desktop_config.json"))?["preferences"] as? [String: Any])
-        for key in SettingsSync.schedulerPreferences {
-            #expect(prefs[key] as? Bool == false, "only the main app runs scheduled tasks: \(key)")
+        var prefs = try #require(SettingsSync.readJSON(box.work.appending(path: "claude_desktop_config.json"))?["preferences"] as? [String: Any])
+        for key in SettingsSync.windowPreferences {
+            #expect(prefs[key] == nil, "a profile without tasks of its own doesn't get the main app's switch: \(key)")
         }
+        #expect(prefs["wakeSchedulerEnabled"] as? Bool == false, "only the main app wakes the Mac")
+
+        try box.write(#"{"preferences":{"ccdScheduledTasksEnabled":true,"coworkScheduledTasksEnabled":false,"wakeSchedulerEnabled":true}}"#,
+                      to: box.work.appending(path: "claude_desktop_config.json"))
+        try box.write(#"{"preferences":{"ccdScheduledTasksEnabled":false,"coworkScheduledTasksEnabled":true}}"#,
+                      to: box.main.appending(path: "claude_desktop_config.json"))
+        try SettingsSync(paths: box.paths).run(into: box.work)
+        prefs = try #require(SettingsSync.readJSON(box.work.appending(path: "claude_desktop_config.json"))?["preferences"] as? [String: Any])
+        #expect(prefs["ccdScheduledTasksEnabled"] as? Bool == true, "the profile runs its own tasks")
+        #expect(prefs["coworkScheduledTasksEnabled"] as? Bool == false)
+        #expect(prefs["wakeSchedulerEnabled"] as? Bool == false)
     }
 
     @Test func toolTogglesFollowTheProfilesAccount() throws {

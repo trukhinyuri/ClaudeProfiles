@@ -11,8 +11,12 @@ public struct SettingsSync: Sendable {
                          "ssh_configs.json", "claude-ssh-remote"]
     /// Claude Code builds the main app has downloaded, one folder per version. Cloning them spares a profile the download.
     static let builds = "claude-code"
-    /// Scheduled tasks run only in the main app; with these on, every window would run each task.
-    static let schedulerPreferences = ["ccdScheduledTasksEnabled", "coworkScheduledTasksEnabled", "wakeSchedulerEnabled"]
+    /// Scheduled task switches, which Claude turns on in a window that has tasks. Tasks are kept per account in
+    /// each window's own data and never copied, so every window keeps its own switches and runs its own tasks.
+    static let windowPreferences = ["ccdScheduledTasksEnabled", "coworkScheduledTasksEnabled"]
+    /// Waking the Mac for scheduled tasks stays with the main app: each app copy would register its own
+    /// wake helper with macOS and ask for its own approval in Login Items.
+    static let mainOnlyPreferences = ["wakeSchedulerEnabled"]
     /// The only `config.json` keys copied; the rest of that file is sign-in and per-window state.
     static let appearanceKeys = ["userThemeMode", "windowControlsZoomFactor", "locale"]
 
@@ -45,10 +49,12 @@ public struct SettingsSync: Sendable {
 
         if try mergeJSON("claude_desktop_config.json", into: dataDir, backup: backup, adjust: { config, current in
             var preferences = config["preferences"] as? [String: Any] ?? [:]
-            for key in Self.schedulerPreferences { preferences[key] = false }
+            let ownPreferences = current["preferences"] as? [String: Any] ?? [:]
+            for key in Self.windowPreferences { preferences[key] = ownPreferences[key] }
+            for key in Self.mainOnlyPreferences { preferences[key] = false }
             // Interface settings here are shared by InterfaceSync, per account and keeping changes made only in the profile.
             if var prefs = preferences["epitaxyPrefs"] as? [String: Any] {
-                let own = (current["preferences"] as? [String: Any])?["epitaxyPrefs"] as? [String: Any] ?? [:]
+                let own = ownPreferences["epitaxyPrefs"] as? [String: Any] ?? [:]
                 prefs = prefs.filter { !InterfaceSync.sharesPref($0.key) }
                 for (key, value) in own where InterfaceSync.sharesPref(key) { prefs[key] = value }
                 preferences["epitaxyPrefs"] = prefs

@@ -120,29 +120,128 @@ public struct SessionSync: Sendable {
                 }
             }
         }
+        removeDeadScratchLinks()
         backup.prune()
         return report
     }
 
+    static let scratchFolder = "/scratch-workspaces/"
+
     /// A session started in a "No folder" scratch workspace keeps that folder in the data directory of the window
-    /// that started it. Claude shows a session as one only when `originCwd` is inside its own data directory, so
-    /// each window's copy of the card names that window's data directory there. `cwd`, where the session actually
-    /// runs and where its conversation is filed, stays the same everywhere.
+    /// that started it. Claude lists a session under "No folder" only when `originCwd` is inside its own data
+    /// directory, and offers side questions (`/btw`) only when `cwd` is the same path. So every other window gets a
+    /// link to the folder at the same place in its own data directory, and its copy of the card names that link as
+    /// both. Claude Code resolves the link, so the conversation stays filed under the folder's real path. Claude
+    /// never sweeps or removes those links: it only cleans up real folders of its own account.
+    ///
+    /// When the folder is gone, or the link can't be made, only `originCwd` is changed, which keeps the session
+    /// under "No folder" without side questions.
     func localized(_ card: Data, for dataDir: URL) -> Data {
-        let key = Data(#""originCwd":""#.utf8)
-        guard let keyRange = card.range(of: key),
-              let end = card[keyRange.upperBound...].firstIndex(of: UInt8(ascii: "\"")),
-              let value = String(data: card[keyRange.upperBound..<end], encoding: .utf8), !value.contains("\\")
-        else { return card }
-        let folder = "/scratch-workspaces/"
-        for dir in dataDirs where value.hasPrefix(dir.path + folder) {
-            let path = dataDir.path + folder + value.dropFirst(dir.path.count + folder.count)
-            guard path != value else { return card }
-            var result = card
-            result.replaceSubrange(keyRange.upperBound..<end, with: Data(path.utf8))
-            return result
+        let strings = Self.topLevelStrings(in: card)
+        guard let originRange = strings["originCwd"], let origin = String(data: card[originRange], encoding: .utf8),
+              let workspace = scratchWorkspace(origin) else { return card }
+        let here = dataDir.path + Self.scratchFolder + workspace
+        var changes = [(originRange, origin)]
+        if let cwdRange = strings["cwd"], let cwd = String(data: card[cwdRange], encoding: .utf8),
+           scratchWorkspace(cwd) == workspace, workspace.split(separator: "/").count == 3,
+           let owner = owner(of: cwd, workspace: workspace),
+           owner.path == dataDir.path || linkScratchFolder(at: here, to: owner.path + Self.scratchFolder + workspace) {
+            changes.append((cwdRange, cwd))
         }
-        return card
+        var result = card
+        for (range, value) in changes.sorted(by: { $0.0.lowerBound > $1.0.lowerBound }) where value != here {
+            result.replaceSubrange(range, with: Data(here.utf8))
+        }
+        return result
+    }
+
+    /// `<account>/<organization>/<folder>` of a path inside any data directory's scratch workspaces.
+    private func scratchWorkspace(_ path: String) -> String? {
+        for dir in dataDirs where path.hasPrefix(dir.path + Self.scratchFolder) {
+            let rest = String(path.dropFirst(dir.path.count + Self.scratchFolder.count))
+            return rest.isEmpty || rest.split(separator: "/").contains { $0 == "." || $0 == ".." } ? nil : rest
+        }
+        return nil
+    }
+
+    /// The data directory whose real scratch folder `cwd` leads to, following any link.
+    private func owner(of cwd: String, workspace: String) -> URL? {
+        let real = URL(filePath: cwd).resolvingSymlinksInPath().path
+        return dataDirs.first { dir in
+            let folder = dir.path + Self.scratchFolder + workspace
+            return isFolder(folder) && URL(filePath: folder).resolvingSymlinksInPath().path == real
+        }
+    }
+
+    private func isFolder(_ path: String) -> Bool {
+        (try? fm.attributesOfItem(atPath: path)[.type] as? FileAttributeType) == .typeDirectory
+    }
+
+    /// Makes `path` a link to `folder`, or checks that it already is one. Anything else at `path` is left alone.
+    private func linkScratchFolder(at path: String, to folder: String) -> Bool {
+        if (try? fm.attributesOfItem(atPath: path)) == nil {
+            try? fm.createDirectory(atPath: (path as NSString).deletingLastPathComponent, withIntermediateDirectories: true)
+            try? fm.createSymbolicLink(atPath: path, withDestinationPath: folder)
+        }
+        return (try? fm.attributesOfItem(atPath: path)[.type] as? FileAttributeType) == .typeSymbolicLink
+            && (try? fm.destinationOfSymbolicLink(atPath: path)) == folder
+    }
+
+    /// Removes links made by `localized(_:for:)` whose folder is gone, such as after that session or the profile
+    /// that started it was removed. Only links to the same place in another data directory are touched.
+    @discardableResult
+    func removeDeadScratchLinks() -> Int {
+        var removed = 0
+        for dir in dataDirs {
+            let root = dir.path + Self.scratchFolder
+            for account in (try? fm.contentsOfDirectory(atPath: root)) ?? [] {
+                for org in (try? fm.contentsOfDirectory(atPath: root + account)) ?? [] {
+                    let orgPath = root + account + "/" + org
+                    for name in (try? fm.contentsOfDirectory(atPath: orgPath)) ?? [] {
+                        let link = orgPath + "/" + name
+                        guard (try? fm.attributesOfItem(atPath: link)[.type] as? FileAttributeType) == .typeSymbolicLink,
+                              let folder = try? fm.destinationOfSymbolicLink(atPath: link), folder.hasPrefix("/"),
+                              folder.hasSuffix(Self.scratchFolder + account + "/" + org + "/" + name),
+                              !fm.fileExists(atPath: folder) else { continue }
+                        if (try? fm.removeItem(atPath: link)) != nil { removed += 1 }
+                    }
+                }
+            }
+        }
+        return removed
+    }
+
+    /// Where each top-level string value of a card is, keyed by name; values with escapes and nested objects are
+    /// skipped. Editing a card in place keeps the rest of it byte for byte as Claude wrote it.
+    static func topLevelStrings(in card: Data) -> [String: Range<Data.Index>] {
+        let bytes = [UInt8](card), base = card.startIndex
+        var result: [String: Range<Data.Index>] = [:]
+        var depth = 0, index = 0, key: String?
+        while index < bytes.count {
+            switch bytes[index] {
+            case UInt8(ascii: "\""):
+                var end = index + 1, escaped = false
+                while end < bytes.count, bytes[end] != UInt8(ascii: "\"") {
+                    if bytes[end] == UInt8(ascii: "\\") { escaped = true; end += 1 }
+                    end += 1
+                }
+                guard end < bytes.count else { return result }
+                if depth == 1 {
+                    var next = end + 1
+                    while next < bytes.count, [0x20, 0x09, 0x0A, 0x0D].contains(bytes[next]) { next += 1 }
+                    if next < bytes.count, bytes[next] == UInt8(ascii: ":") {
+                        key = escaped ? nil : String(decoding: bytes[(index + 1)..<end], as: UTF8.self)
+                    } else if let name = key, !escaped {
+                        result[name] = (base + index + 1)..<(base + end)
+                    }
+                }
+                index = end + 1
+            case UInt8(ascii: "{"), UInt8(ascii: "["): depth += 1; index += 1
+            case UInt8(ascii: "}"), UInt8(ascii: "]"): depth -= 1; index += 1
+            default: index += 1
+            }
+        }
+        return result
     }
 
     /// Every `<account>/<organization>` session directory across all data directories.
