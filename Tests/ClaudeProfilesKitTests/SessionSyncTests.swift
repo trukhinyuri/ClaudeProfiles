@@ -184,3 +184,32 @@ struct SafetyTests {
         #expect(try manager.syncSessions() != nil)
     }
 }
+
+@Suite("Settings sharing")
+struct SettingsSyncTests {
+    @Test func copiesExtensionsAndMergesConfigWithoutTouchingSignIn() throws {
+        let box = try Sandbox()
+        let fm = FileManager.default
+        try fm.createDirectory(at: box.main.appending(path: "Claude Extensions/ext"), withIntermediateDirectories: true)
+        try box.write("{}", to: box.main.appending(path: "Claude Extensions/ext/manifest.json"))
+        try box.write(#"{"mcpServers":{"a":{"command":"x"}},"preferences":{"keepAwakeEnabled":true,"sidebarMode":"code"}}"#,
+                      to: box.main.appending(path: "claude_desktop_config.json"))
+        try box.write(#"{"mcpServers":{"old":{}},"preferences":{"sidebarMode":"chat","ownOnly":1}}"#,
+                      to: box.work.appending(path: "claude_desktop_config.json"))
+        try box.write(#"{"token":"main"}"#, to: box.main.appending(path: "config.json"))
+        try box.write(#"{"token":"work"}"#, to: box.work.appending(path: "config.json"))
+
+        let sync = SettingsSync(paths: box.paths)
+        #expect(try sync.run(into: box.work) == 2)
+
+        #expect(box.exists(box.work.appending(path: "Claude Extensions/ext/manifest.json")))
+        let config = try #require(SettingsSync.readJSON(box.work.appending(path: "claude_desktop_config.json")))
+        #expect((config["mcpServers"] as? [String: Any])?.keys.sorted() == ["a"], "MCP servers mirror the main app")
+        let prefs = try #require(config["preferences"] as? [String: Any])
+        #expect(prefs["sidebarMode"] as? String == "code")
+        #expect(prefs["keepAwakeEnabled"] as? Bool == true)
+        #expect(prefs["ownOnly"] as? Int == 1, "settings only the profile has are kept")
+        #expect(box.read(box.work.appending(path: "config.json")) == #"{"token":"work"}"#, "sign-in is never copied")
+        #expect(try sync.run(into: box.work) == 0, "a second run has nothing to do")
+    }
+}

@@ -53,6 +53,16 @@ Symlinking the folders instead of copying doesn’t work: Claude Desktop creates
 
 The app syncs at launch and every minute while running (it stays in the menu bar when the window is closed); `claude-profiles sync` does the same on demand. Removing a profile syncs once more after its window quits, so sessions started in it moments ago aren’t lost.
 
+## Sharing the setup
+
+Claude Desktop keeps some setup next to the sign-in, in each data directory. Each time a profile window is started, `SettingsSync` brings it in line with the main app, which is the source:
+
+- `Claude Extensions`, `Claude Extensions Settings`, `extensions-installations.json` and `ssh_configs.json` are copied as they are (extensions as APFS clones).
+- `claude_desktop_config.json` and `mcp-user-tool-toggles.json` are merged key by key with the main app's values first, so settings only the profile has are kept. `mcpServers` mirrors the main app exactly.
+- `config.json`, cookies and other sign-in data are never read or copied.
+
+It runs only while the profile's window is closed, because Claude writes these files back when it quits. A replaced file goes to `Backups/<date>/` first.
+
 ## Reading Claude Desktop data
 
 `DesktopData` reads, and never writes:

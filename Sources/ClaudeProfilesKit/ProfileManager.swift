@@ -189,6 +189,7 @@ public final class ProfileManager: @unchecked Sendable {
                 try buildEngine(for: profile)
             }
         }
+        _ = try? SettingsSync(paths: paths).run(into: paths.dataDir(for: profile.id))
         let configuration = NSWorkspace.OpenConfiguration()
         configuration.createsNewApplicationInstance = true
         configuration.arguments = ["--user-data-dir=\(paths.dataDir(for: profile.id).path)"]

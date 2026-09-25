@@ -32,6 +32,7 @@ Claude Profiles gives every subscription its own Claude window with its own Dock
 - **One window per subscription.** Each profile is the official Claude Desktop app running with its own sign-in. No code is patched or injected.
 - **Labeled Dock icons.** `WORK`, `LAB` or `TEAM` on a color of your choice tells you which account a window belongs to. The launchers work from Spotlight too.
 - **Shared sessions.** Claude Code sessions created in any window appear in every window. Deleted and archived sessions stay deleted and archived everywhere.
+- **Same setup everywhere.** Before a profile window starts, it gets the main app's desktop extensions, MCP servers, tool toggles, SSH hosts and preferences. Sign-ins are never copied.
 - **Usage at a glance.** Five-hour and weekly usage for every subscription, from what Claude Desktop itself records. The one with the most headroom is highlighted.
 - **Knows who is signed in.** Every row shows the email of the account in that window and warns if it is not the one you intended.
 - **Easy to add and remove.** Enter an email, sign in inside the new window, done. Removing moves the profile to the Trash, so nothing is lost by accident.
@@ -114,7 +115,7 @@ More detail: [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
 
 ### Privacy
 
-Claude Profiles has no network code and no telemetry. From Claude Desktop’s data it uses three things: the ID of the signed-in account (`lastKnownAccountUuid` in `config.json`; token caches in the same file are ignored), the account email, which it finds by scanning Claude’s local IndexedDB cache and keeps nothing else from, and the local usage history. Inside Claude’s data it writes only session index cards, deletion markers and archive lists; everything else it writes is its own files and the Finder icon of each profile’s app copy.
+Claude Profiles has no network code and no telemetry. From Claude Desktop’s data it uses three things: the ID of the signed-in account (`lastKnownAccountUuid` in `config.json`; token caches in the same file are ignored), the account email, which it finds by scanning Claude’s local IndexedDB cache and keeps nothing else from, and the local usage history. Inside Claude’s data it writes only session index cards, deletion markers and archive lists, and, in profiles only, the copied extensions and settings listed above; everything else it writes is its own files and the Finder icon of each profile’s app copy.
 
 ## FAQ
 
