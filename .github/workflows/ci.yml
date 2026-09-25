@@ -9,7 +9,7 @@ jobs:
   test:
     runs-on: macos-15
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       - name: Toolchain
         run: swift --version
       - name: Test
@@ -18,7 +18,7 @@ jobs:
         run: scripts/build-app.sh
       - name: Package
         run: ditto -c -k --keepParent build/ClaudeUnlimited.app ClaudeUnlimited.zip
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v5
         with:
           name: ClaudeUnlimited
           path: ClaudeUnlimited.zip

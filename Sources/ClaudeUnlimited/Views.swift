@@ -173,7 +173,7 @@ struct EmptyHint: View {
                 .frame(width: 40)
             VStack(alignment: .leading, spacing: 6) {
                 Text("Add your next subscription").font(.body.weight(.semibold))
-                Text("Each one gets its own Claude window and a labeled Dock icon, so you always know which account you are in. When one hits its limit, open the same session in another window and keep going.")
+                Text("Each one gets its own Claude window and a labeled Dock icon, so you always know which account you are in. Your Claude Code sessions show up in every window, so you can pick up any of them in whichever subscription you choose.")
                     .font(.callout)
                     .foregroundStyle(.secondary)
                     .fixedSize(horizontal: false, vertical: true)
@@ -256,7 +256,9 @@ struct ContentView: View {
                 Text(problem).lineLimit(2).textSelection(.enabled)
             } else {
                 Image(systemName: "arrow.triangle.2.circlepath")
-                if let last = model.lastSync {
+                if model.statuses.count < 2 {
+                    Text("Sessions will be shared as soon as you add a subscription")
+                } else if let last = model.lastSync {
                     Text("Sessions shared across \(model.statuses.count) windows · synced \(last, format: .relative(presentation: .named))")
                 } else {
                     Text("Sharing sessions…")
