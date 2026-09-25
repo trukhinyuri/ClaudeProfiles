@@ -3,6 +3,12 @@
 ## Unreleased
 
 - Cowork sessions shared across all profiles, the same way Claude Code sessions already are
+- Profile windows look like the main one: sidebar layout, pinned, starred and unread sessions, groups, filters, theme, zoom and language come from the main app
+- Scheduled tasks stay off in profile windows, so each task runs once, in the main app (0.1.0 copied the main app’s scheduler settings into profiles)
+- Tool toggles chosen in the main app now apply to each profile’s own account
+- A profile window restarts once after its first sign-in, so shared sessions show up right away
+- New profiles reuse the Claude Code build the main app has already downloaded
+- Removing a profile also removes its Cowork sessions from other windows, since their files go to the Trash with it
 
 ## 0.1.0 — 2026-09-25
 

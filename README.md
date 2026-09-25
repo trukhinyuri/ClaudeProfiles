@@ -32,7 +32,7 @@ Claude Profiles gives every subscription its own Claude window with its own Dock
 - **One window per subscription.** Each profile is the official Claude Desktop app running with its own sign-in. No code is patched or injected.
 - **Labeled Dock icons.** `WORK`, `LAB` or `TEAM` on a color of your choice tells you which account a window belongs to. The launchers work from Spotlight too.
 - **Shared sessions.** Claude Code and Cowork sessions created in any window appear in every window. Deleted and archived sessions stay deleted and archived everywhere.
-- **Same setup everywhere.** Before a profile window starts, it gets the main app's desktop extensions, MCP servers, tool toggles, SSH hosts and preferences. Sign-ins are never copied.
+- **Same setup everywhere.** Before a profile window starts, it gets the main app's extensions, MCP servers, tool toggles, SSH hosts, preferences and theme, and the same sidebar: pinned, starred and unread sessions, groups and filters. Sign-ins are never copied.
 - **Usage at a glance.** Five-hour and weekly usage for every subscription, from what Claude Desktop itself records. The one with the most headroom is highlighted.
 - **Knows who is signed in.** Every row shows the email of the account in that window and warns if it is not the one you intended.
 - **Easy to add and remove.** Enter an email, sign in inside the new window, done. Removing moves the profile to the Trash, so nothing is lost by accident.
@@ -109,13 +109,15 @@ The binary ships inside the app: `ln -s ~/Applications/Claude\ Profiles/Claude\ 
 
 A profile is Claude Desktop started with its own `--user-data-dir`, which is standard Electron behavior. Session sharing copies the small index cards Claude Desktop keeps for each Claude Code session into every account’s folder; the conversations themselves already live in `~/.claude`. Cowork sessions are shared the same way, from their own index cards; since Cowork keeps no deletion marker, Claude Profiles remembers what each folder last held so a card missing from one folder isn’t copied back into it while it might still be deleted there. While any Claude window is open, sharing only adds and updates; deletions are spread only when all windows are closed. Every card it removes is backed up first, as is the first version of the day of every card it overwrites; backups older than a week go to the Trash.
 
+Before a profile window starts, Claude Profiles brings its setup in line with the main app: extensions, MCP servers and tool toggles, SSH hosts, preferences, theme, zoom and language, the Claude Code builds the main app has already downloaded (as APFS clones), and the sidebar state Claude keeps in its Local Storage. The main app wins, except for a setting you changed only in the profile’s window since it last started. Scheduled tasks stay switched off in profiles, so each task runs once, in the main app. Right after its first sign-in, a profile’s window restarts once: Claude reads sessions and per-account settings only at launch.
+
 Google sign-in finishes in your browser and comes back to Claude through a `claude://` link, which macOS normally hands to the main Claude app. While a profile window is signing in, Claude Profiles leaves only that window’s app copy registered for those links, and gives them back to the main app as soon as the profile is signed in (or after 15 minutes). The link goes from macOS straight to Claude; Claude Profiles never reads it.
 
 More detail: [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
 
 ### Privacy
 
-Claude Profiles has no network code and no telemetry. From Claude Desktop’s data it uses three things: the ID of the signed-in account (`lastKnownAccountUuid` in `config.json`; token caches in the same file are ignored), the account email, which it finds by scanning Claude’s local IndexedDB cache and keeps nothing else from, and the local usage history. Inside Claude’s data it writes only session index cards, deletion markers and archive lists, and, in profiles only, the copied extensions and settings listed above; everything else it writes is its own files and the Finder icon of each profile’s app copy.
+Claude Profiles has no network code and no telemetry. To show who is signed in and how much is used, it reads three things from Claude Desktop’s data: the ID of the signed-in account (`lastKnownAccountUuid` in `config.json`), the account email, which it finds by scanning Claude’s local IndexedDB cache and keeps nothing else from, and the local usage history. Inside Claude’s data it writes session index cards, deletion markers and archive lists, and, in profiles only, the setup and sidebar state listed above. In a profile’s `config.json` it sets only the theme, zoom and language and leaves the rest of the file, including that profile’s sign-in, as it was. Tokens, cookies and passwords are never copied from one window to another. Everything else it writes is its own files and the Finder icon of each profile’s app copy.
 
 ## FAQ
 
@@ -126,7 +128,7 @@ No. Each subscription is metered on its own by Anthropic. Claude Profiles only m
 That would amount to automated limit evasion. You decide where to work; the app only shows where there is headroom.
 
 **What about scheduled tasks?**
-Claude Profiles shares session cards only. It doesn’t copy Claude Desktop’s scheduled-task list into profiles, so tasks you created in the main app are listed there only.
+They run in the main Claude app only. Profiles get the main app’s settings with scheduling switched off, so a task never runs in two windows at once.
 
 **Does it work with Team or Enterprise seats?**
 Technically yes, a profile can sign in to any account. Whether you may use a work seat this way is up to your organization.
@@ -138,6 +140,11 @@ Profile copies are rebuilt from the new version the next time you open them (or 
 
 - Archive lists are merged: a session archived in any window is archived in all of them, and un-archiving it in one window doesn’t stick. Undoing the merge safely would need Claude Desktop to tell stale writes from real changes.
 - Claude Desktop doesn’t lock sessions across windows. Work in a session from one window at a time.
+- Sidebar and interface settings reach a profile window when it starts. Changes you make in the main app while a profile window is open show up there after that window restarts.
+- What is live stays in the window doing it: which session is running or waiting for you, and the Sessions list on the home screen.
+- Features Anthropic turns on per account or organization, such as Routines, appear only in windows whose account has them.
+- A session started without a project folder is listed under its own folder name in profile windows, not under “No folder”: Claude recognizes those scratch folders only inside its own data directory.
+- Cowork keeps a session’s files in the data of the window that started it, so removing a profile removes the Cowork sessions started in it from every window. They go to the Trash with the profile.
 - There is no Developer ID signature yet, so prebuilt downloads need a one-time “Open Anyway”.
 
 ## Uninstall

@@ -64,17 +64,29 @@ Symlinking the folders instead of copying doesn’t work: Claude Desktop creates
 
 Only `local_*.json` cards move between folders. Cowork keeps no tombstone for a deleted session, so a card that disappears from a folder can't be told apart from one that folder never had without help: `CoworkSync` keeps a small state file, `cowork-sync.json` in the Claude Profiles state directory, recording which cards each folder held after the last run. A card missing from a folder that held it last time is read as deleted there. While any Claude window is open, it is simply not copied back into that folder, and the folder keeps being read that way on every later run; once all windows are closed, it is removed from every folder that still has it (backed up first) — unless some other copy was modified since the last run, in which case that's read as someone still using the session, and it's kept and shared instead of removed. A folder the state file doesn't know about yet (a new profile) is only ever filled, never treated as a source of deletions.
 
-The app syncs at launch and every minute while running (it stays in the menu bar when the window is closed); `claude-profiles sync` does the same on demand. Removing a profile syncs once more after its window quits, so sessions started in it moments ago aren’t lost.
+The app syncs at launch and every minute while running (it stays in the menu bar when the window is closed); `claude-profiles sync` does the same on demand. Removing a profile syncs once more after its window quits, so Claude Code sessions started in it moments ago aren’t lost. Its Cowork sessions can't outlive it, because their working folders are inside its data directory: after the profile goes to the Trash, `CoworkSync.removeCards(workingIn:)` removes their cards from every other folder, backing each one up.
 
 ## Sharing the setup
 
-Claude Desktop keeps some setup next to the sign-in, in each data directory. Each time a profile window is started, `SettingsSync` brings it in line with the main app, which is the source:
+Claude Desktop keeps some setup next to the sign-in, in each data directory. Each time a profile window is started, `SettingsSync` and `InterfaceSync` bring it in line with the main app, which is the source. They run only while the profile's window is closed, because Claude writes these files back when it quits. A replaced file goes to `Backups/<date>/` first.
 
-- `Claude Extensions`, `Claude Extensions Settings`, `extensions-installations.json` and `ssh_configs.json` are copied as they are (extensions as APFS clones).
-- `claude_desktop_config.json` and `mcp-user-tool-toggles.json` are merged key by key with the main app's values first, so settings only the profile has are kept. `mcpServers` mirrors the main app exactly.
-- `config.json`, cookies and other sign-in data are never read or copied.
+`SettingsSync`:
 
-It runs only while the profile's window is closed, because Claude writes these files back when it quits. A replaced file goes to `Backups/<date>/` first.
+- `Claude Extensions`, `Claude Extensions Settings`, `extensions-installations.json`, `ssh_configs.json` and `claude-ssh-remote` are copied as they are (APFS clones).
+- `claude-code/<version>` builds the main app has finished downloading (they have a `.verified` file) are cloned under a temporary name and then renamed, so a profile never sees half a build and its first session needn't download one.
+- `claude_desktop_config.json` and `mcp-user-tool-toggles.json` are merged key by key with the main app's values first, so settings only the profile has are kept. `mcpServers` mirrors the main app exactly. The scheduler switches (`ccdScheduledTasksEnabled`, `coworkScheduledTasksEnabled`, `wakeSchedulerEnabled`) are always off in profiles, so a scheduled task runs once, in the main app. Tool toggles are stored per account; the main account's choices are given to the profile's account.
+- In `config.json`, only `userThemeMode`, `windowControlsZoomFactor` and `locale` are set. The file also holds the profile's sign-in, so it is edited in place with its permissions kept, and never copied or backed up.
+
+`InterfaceSync` handles what Claude keeps in the `https://claude.ai` origin of its Local Storage:
+
+- A fixed list of keys: sidebar pins and hidden projects, starred sessions and groups, unread markers, session filters and sections, per-session model choice and results, editor preferences, and dismissed tips. Drafts, caches, analytics, the default model (it depends on the plan) and anything that identifies the account are not on the list.
+- Keys Claude files per account (`…status-filter.<account>`, `…folder-permission-mode.<account>`, a few notices) are copied under the profile's account. A per-account key the main app doesn't have is removed from the profile, so both show Claude's default.
+- The sidebar store `dframe-store` is merged field by field. Fields about the account itself (`lastSidebarScopeKey`, `…ByScope` counts, `…ByOrg` flags) stay the profile's; the main app's custom groups move from its `account/organization` scope to the profile's.
+- The main app wins, except for a value changed only in the profile since the last run. `Interface/<profile>.json` in the state directory records the values both sides last agreed on, which is what tells the two cases apart.
+
+`LocalStorage` reads Chromium's LevelDB database directly: `CURRENT`, the manifest, `.ldb` tables (with Snappy) and `.log` files, newest sequence number wins. It writes by adding one new, higher-numbered `.log` file holding one batch; LevelDB replays it the next time Claude opens the database, and existing files are never changed. It refuses to write while another process holds the database's `LOCK`.
+
+Claude reads sessions and per-account settings only at launch, and a new profile doesn't know its account until it is signed in. So when the app sees a profile's window go from signed out to signed in, it shares sessions, creates that account's session folders, quits the window normally and opens it again. A window that doesn't quit within 20 seconds is left alone.
 
 ## Reading Claude Desktop data
 
@@ -82,7 +94,7 @@ It runs only while the profile's window is closed, because Claude writes these f
 
 | Fact | Source | Notes |
 |---|---|---|
-| Signed-in account | `config.json` → `lastKnownAccountUuid` | The file also holds OAuth token caches; only this key is read. |
+| Signed-in account | `config.json` → `lastKnownAccountUuid` | The file also holds OAuth token caches; `DesktopData` reads only this key, and `SettingsSync` only the three appearance keys. |
 | Usage | `plan-usage-history.json` → latest sample `u.fh` (5-hour %) and `u.sd` (weekly %) | Recorded by Claude Desktop itself; the 5-hour value is shown as “reset” once five hours have passed. |
 | Email | IndexedDB cache of the claude.ai profile (scanned; only the email is kept, cached per account) | The address must follow `email_address` within 140 bytes and the account UUID must appear within the 80 bytes before it, so addresses of teammates in the same cache are ignored. |
 
