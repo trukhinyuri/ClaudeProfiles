@@ -257,6 +257,21 @@ struct SettingsSyncTests {
         #expect(!backedUp.contains { $0.hasSuffix("/config.json") }, "the file holding sign-in is never copied into backups")
     }
 
+    @Test func finishedClaudeCodeBuildsAreCloned() throws {
+        let box = try Sandbox()
+        let fm = FileManager.default
+        let builds = box.main.appending(path: "claude-code")
+        try fm.createDirectory(at: builds.appending(path: "2.0.0/claude.app"), withIntermediateDirectories: true)
+        try box.write("sha", to: builds.appending(path: "2.0.0/.verified"))
+        try fm.createDirectory(at: builds.appending(path: "2.1.0/claude.app"), withIntermediateDirectories: true)
+
+        try SettingsSync(paths: box.paths).run(into: box.work)
+
+        let copied = try fm.contentsOfDirectory(atPath: box.work.appending(path: "claude-code").path)
+        #expect(copied == ["2.0.0"], "an unfinished download (no .verified) is left alone")
+        #expect(box.read(box.work.appending(path: "claude-code/2.0.0/.verified")) == "sha")
+    }
+
     @Test func profileNeverSignedInGetsNoConfigFile() throws {
         let box = try Sandbox()
         try box.write(#"{"userThemeMode":"dark","oauth:tokenCache":"main-secret"}"#, to: box.main.appending(path: "config.json"))

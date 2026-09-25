@@ -9,6 +9,8 @@ public struct SettingsSync: Sendable {
     /// Files and folders copied as they are.
     static let copied = ["Claude Extensions", "Claude Extensions Settings", "extensions-installations.json",
                          "ssh_configs.json", "claude-ssh-remote"]
+    /// Claude Code builds the main app has downloaded, one folder per version. Cloning them spares a profile the download.
+    static let builds = "claude-code"
     /// Scheduled tasks run only in the main app; with these on, every window would run each task.
     static let schedulerPreferences = ["ccdScheduledTasksEnabled", "coworkScheduledTasksEnabled", "wakeSchedulerEnabled"]
     /// The only `config.json` keys copied; the rest of that file is sign-in and per-window state.
@@ -39,6 +41,8 @@ public struct SettingsSync: Sendable {
             changed += 1
         }
 
+        changed += try copyBuilds(into: dataDir)
+
         if try mergeJSON("claude_desktop_config.json", into: dataDir, backup: backup, adjust: { config in
             var preferences = config["preferences"] as? [String: Any] ?? [:]
             for key in Self.schedulerPreferences { preferences[key] = false }
@@ -55,6 +59,25 @@ public struct SettingsSync: Sendable {
 
         if try copyAppearance(into: dataDir) { changed += 1 }
         return changed
+    }
+
+    /// Copies Claude Code versions the profile doesn't have yet. Only finished downloads (with `.verified`) are
+    /// copied, under a temporary name first, so a profile never sees half a build.
+    private func copyBuilds(into dataDir: URL) throws -> Int {
+        let from = paths.mainDataDir.appending(path: Self.builds, directoryHint: .isDirectory)
+        let to = dataDir.appending(path: Self.builds, directoryHint: .isDirectory)
+        var copied = 0
+        for version in (try? fm.contentsOfDirectory(atPath: from.path)) ?? [] where !version.hasPrefix(".") {
+            let build = from.appending(path: version, directoryHint: .isDirectory)
+            guard fm.fileExists(atPath: build.appending(path: ".verified").path),
+                  !fm.fileExists(atPath: to.appending(path: version).path) else { continue }
+            try fm.createDirectory(at: to, withIntermediateDirectories: true)
+            let partial = to.appending(path: ".\(version)-\(UUID().uuidString)", directoryHint: .isDirectory)
+            try fm.copyItem(at: build, to: partial)
+            try fm.moveItem(at: partial, to: to.appending(path: version, directoryHint: .isDirectory))
+            copied += 1
+        }
+        return copied
     }
 
     /// Merges `name` from the main app into the profile, applies `adjust`, and writes it if anything changed.
