@@ -1,5 +1,5 @@
 import AppKit
-import ClaudeUnlimitedKit
+import ClaudeProfilesKit
 import SwiftUI
 
 @MainActor
@@ -15,17 +15,17 @@ final class AppModel: ObservableObject {
     @Published var pendingRemoval: ProfileStatus?
 
     let manager: ProfileManager
-    let isDemo = ProcessInfo.processInfo.environment["CLAUDE_UNLIMITED_DEMO"] == "1"
+    let isDemo = ProcessInfo.processInfo.environment["CLAUDE_PROFILES_DEMO"] == "1"
     private var refreshTimer: Timer?
     private var syncTimer: Timer?
 
     init() {
-        let cli = Bundle.main.bundleURL.appending(path: "Contents/Helpers/claude-unlimited")
+        let cli = Bundle.main.bundleURL.appending(path: "Contents/Helpers/claude-profiles")
         manager = ProfileManager(cliPath: FileManager.default.isExecutableFile(atPath: cli.path) ? cli : nil)
         reload()
-        // Documentation screenshots: CLAUDE_UNLIMITED_DEMO=1 shows sample data, …_DEMO_SHEET=1 opens "Add".
+        // Documentation screenshots: CLAUDE_PROFILES_DEMO=1 shows sample data, …_DEMO_SHEET=1 opens "Add".
         guard !isDemo else {
-            isAdding = ProcessInfo.processInfo.environment["CLAUDE_UNLIMITED_DEMO_SHEET"] == "1"
+            isAdding = ProcessInfo.processInfo.environment["CLAUDE_PROFILES_DEMO_SHEET"] == "1"
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
                 NSApp.windows.first { $0.identifier?.rawValue == "main" }?.setContentSize(NSSize(width: 900, height: 530))
             }

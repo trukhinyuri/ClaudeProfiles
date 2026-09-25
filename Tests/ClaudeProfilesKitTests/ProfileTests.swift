@@ -1,7 +1,7 @@
 import AppKit
 import Foundation
 import Testing
-@testable import ClaudeUnlimitedKit
+@testable import ClaudeProfilesKit
 
 @Suite("Profiles")
 struct ProfileTests {
@@ -106,9 +106,9 @@ struct LauncherTests {
 
     @Test func launcherScriptQuotesPaths() throws {
         let box = try Sandbox()
-        let manager = ProfileManager(paths: box.paths, cliPath: URL(fileURLWithPath: "/Apps/It's Here/claude-unlimited"))
+        let manager = ProfileManager(paths: box.paths, cliPath: URL(fileURLWithPath: "/Apps/It's Here/claude-profiles"))
         let script = manager.launcherScript(for: Profile(id: "work", label: "WORK", email: nil, color: "#000000"))
-        #expect(script.contains(#"'/Apps/It'\''s Here/claude-unlimited' open 'work'"#))
+        #expect(script.contains(#"'/Apps/It'\''s Here/claude-profiles' open 'work'"#))
         #expect(script.contains("--user-data-dir="))
     }
 

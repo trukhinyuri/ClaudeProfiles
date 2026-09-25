@@ -1,11 +1,11 @@
 # Architecture
 
-ClaudeUnlimited is a thin layer around the official Claude Desktop app. It never changes how Claude talks to Anthropic; it only decides which data directory each Claude window uses and keeps a few local files consistent between them.
+Claude Profiles is a thin layer around the official Claude Desktop app. It never changes how Claude talks to Anthropic; it only decides which data directory each Claude window uses and keeps a few local files consistent between them.
 
 ```text
-                ┌──────────────────────── ClaudeUnlimited.app ────────────────────────┐
-                │  SwiftUI window · menu bar · claude-unlimited CLI                    │
-                │                 └───────── ClaudeUnlimitedKit ─────────┘             │
+                ┌──────────────────────── Claude Profiles.app ────────────────────────┐
+                │  SwiftUI window · menu bar · claude-profiles CLI                    │
+                │                 └───────── ClaudeProfilesKit ─────────┘             │
                 └───────┬──────────────────────┬───────────────────────┬──────────────┘
           creates/opens │                reads │                 syncs │
                         ▼                      ▼                       ▼
@@ -16,11 +16,11 @@ ClaudeUnlimited is a thin layer around the official Claude Desktop app. It never
 
 ## Profiles
 
-A profile is three things, all derived from a registry entry in `~/Library/Application Support/ClaudeUnlimited/profiles.json`:
+A profile is three things, all derived from a registry entry in `~/Library/Application Support/Claude Profiles/profiles.json`:
 
 1. **Engine.** An APFS clone of `/Applications/Claude.app` created with `clonefile(2)`, so it shares disk blocks with the original. The only change is a Finder custom icon, which adds an `Icon\r` file and a Finder flag to the bundle. No code or resource is modified and Anthropic’s signature still verifies with `codesign --verify` (the `--strict` check flags the extra icon file). Because the Dock shows a running app’s icon from its bundle path, each profile window gets its own labeled icon.
 2. **Data directory.** Claude Desktop is an Electron app, and Electron keeps everything (cookies, sign-in, window state, caches) in the directory passed with `--user-data-dir`. Each profile gets its own, so each can be signed in to a different account at the same time.
-3. **Launcher.** A tiny app bundle whose executable is a shell script calling `claude-unlimited open <id>`, with a fallback to `open -n -a <engine> --args --user-data-dir=<dir>`. Launchers can be kept in the Dock and are indexed by Spotlight; engines can’t, because opening an engine directly would start it without its data directory.
+3. **Launcher.** A tiny app bundle whose executable is a shell script calling `claude-profiles open <id>`, with a fallback to `open -n -a <engine> --args --user-data-dir=<dir>`. Launchers can be kept in the Dock and are indexed by Spotlight; engines can’t, because opening an engine directly would start it without its data directory.
 
 Engines are rebuilt when `CFBundleVersion` of the installed Claude differs from the clone’s and the profile isn’t running (`ProfileManager.refresh()` and on open).
 
@@ -45,7 +45,7 @@ Claude Code conversations are stored in `~/.claude/projects` and are the same fo
 
 Symlinking the folders instead of copying doesn’t work: Claude Desktop creates them with `mkdir` and fails on a symlink.
 
-The app syncs at launch and every minute while running (it stays in the menu bar when the window is closed); `claude-unlimited sync` does the same on demand. Removing a profile syncs once more after its window quits, so sessions started in it moments ago aren’t lost.
+The app syncs at launch and every minute while running (it stays in the menu bar when the window is closed); `claude-profiles sync` does the same on demand. Removing a profile syncs once more after its window quits, so sessions started in it moments ago aren’t lost.
 
 ## Reading Claude Desktop data
 
@@ -59,4 +59,4 @@ The app syncs at launch and every minute while running (it stays in the menu bar
 
 ## Testing
 
-All logic lives in `ClaudeUnlimitedKit` and takes a `Paths` value, so tests run against a temporary home directory and never touch real data. `Backup` accepts a `discard` closure so pruning can be tested without filling the real Trash.
+All logic lives in `ClaudeProfilesKit` and takes a `Paths` value, so tests run against a temporary home directory and never touch real data. `Backup` accepts a `discard` closure so pruning can be tested without filling the real Trash.

@@ -1,4 +1,4 @@
-import ClaudeUnlimitedKit
+import ClaudeProfilesKit
 import SwiftUI
 
 extension Color {
@@ -125,8 +125,9 @@ struct ProfileRow: View {
                         .foregroundStyle(.secondary)
                 }
                 if !status.isSignedIn {
-                    Label("Sign in inside the Claude \(status.label) window", systemImage: "person.crop.circle.badge.exclamationmark")
+                    Label("Sign in inside the Claude \(status.label) window with “Continue with email”", systemImage: "person.crop.circle.badge.exclamationmark")
                         .font(.caption).foregroundStyle(.orange)
+                        .help("“Continue with Google” finishes in your browser, and macOS hands the result to the main Claude app instead of this window.")
                 } else if status.isUnexpectedAccount, let expected = status.profile?.email {
                     Label("Signed in as a different account than \(expected)", systemImage: "exclamationmark.triangle")
                         .font(.caption).foregroundStyle(.orange)
@@ -265,10 +266,10 @@ struct ContentView: View {
                 }
             }
             Spacer()
-            Link(destination: URL(string: "https://github.com/trukhinyuri/ClaudeUnlimited#staying-within-anthropics-terms")!) {
+            Link(destination: URL(string: "https://github.com/trukhinyuri/ClaudeProfiles#staying-within-anthropics-terms")!) {
                 Label("Fair use", systemImage: "checkmark.shield")
             }
-            .help("How ClaudeUnlimited stays within Anthropic’s terms")
+            .help("How Claude Profiles stays within Anthropic’s terms")
         }
         .font(.caption)
         .foregroundStyle(.secondary)

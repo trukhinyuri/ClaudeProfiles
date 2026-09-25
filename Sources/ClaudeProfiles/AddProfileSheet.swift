@@ -1,4 +1,4 @@
-import ClaudeUnlimitedKit
+import ClaudeProfilesKit
 import SwiftUI
 
 @MainActor
@@ -36,7 +36,7 @@ struct AddProfileSheet: View {
                 DockIconPreview(label: form.label.isEmpty ? "NEW" : form.label.uppercased(), color: form.color)
                 VStack(alignment: .leading, spacing: 4) {
                     Text("Add a Subscription").font(.title3.weight(.semibold))
-                    Text("A new Claude window opens with its own Dock icon. Sign in there with this account; the email code is entered right in that window.")
+                    Text("A new Claude window opens with its own Dock icon. Sign in there with **Continue with email** and the code from your inbox. **Continue with Google** won’t work: macOS hands its result to the main Claude app.")
                         .font(.callout)
                         .foregroundStyle(.secondary)
                         .fixedSize(horizontal: false, vertical: true)
@@ -80,7 +80,7 @@ struct AddProfileSheet: View {
                 }
             }
 
-            Label("ClaudeUnlimited never sees your password, codes or tokens: you sign in inside the official Claude app.", systemImage: "lock.shield")
+            Label("Claude Profiles never sees your password, codes or tokens: you sign in inside the official Claude app.", systemImage: "lock.shield")
                 .font(.caption)
                 .foregroundStyle(.secondary)
                 .fixedSize(horizontal: false, vertical: true)

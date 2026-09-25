@@ -1,6 +1,6 @@
 import Foundation
 import Testing
-@testable import ClaudeUnlimitedKit
+@testable import ClaudeProfilesKit
 
 /// A throwaway home directory with a main data dir and one profile.
 struct Sandbox {

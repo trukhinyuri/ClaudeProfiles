@@ -1,17 +1,17 @@
-import ClaudeUnlimitedKit
+import ClaudeProfilesKit
 import Foundation
 
 let usage = """
-claude-unlimited — several Claude subscriptions side by side in Claude Desktop.
+claude-profiles — several Claude subscriptions side by side in Claude Desktop.
 
 USAGE
-  claude-unlimited list                          Show every profile, its account and plan usage
-  claude-unlimited add <email> [--label TEXT] [--color #RRGGBB]
+  claude-profiles list                          Show every profile, its account and plan usage
+  claude-profiles add <email> [--label TEXT] [--color #RRGGBB]
                                                  Create a profile and open it to sign in
-  claude-unlimited open <profile>                Open a profile's window (id or label)
-  claude-unlimited remove <profile>              Quit it and move its copy and sign-in to the Trash
-  claude-unlimited sync                          Share Claude Code sessions across profiles now
-  claude-unlimited refresh                       Rebuild app copies after a Claude Desktop update
+  claude-profiles open <profile>                Open a profile's window (id or label)
+  claude-profiles remove <profile>              Quit it and move its copy and sign-in to the Trash
+  claude-profiles sync                          Share Claude Code sessions across profiles now
+  claude-profiles refresh                       Rebuild app copies after a Claude Desktop update
 """
 
 func fail(_ message: String) -> Never {
@@ -30,7 +30,7 @@ let args = Array(CommandLine.arguments.dropFirst())
 
 func resolve(_ name: String) -> Profile {
     guard let profile = manager.profiles.first(where: { $0.id == name.lowercased() || $0.label.caseInsensitiveCompare(name) == .orderedSame })
-    else { fail("no profile “\(name)”. Run `claude-unlimited list`.") }
+    else { fail("no profile “\(name)”. Run `claude-profiles list`.") }
     return profile
 }
 
@@ -59,7 +59,7 @@ do {
             ?? Profile.suggestedLabel(for: email, taken: Set(manager.profiles.map(\.label)))
         let profile = try manager.create(label: label, email: email, color: value(of: "--color", in: args))
         try await manager.open(profile.id)
-        print("Created Claude \(profile.label). Sign in as \(email) in the window that just opened.")
+        print("Created Claude \(profile.label). Sign in as \(email) in the window that just opened, with “Continue with email” (Google sign-in returns to the main Claude app).")
     case "open":
         guard args.count >= 2 else { fail("open needs a profile") }
         if ["main", "claude"].contains(args[1].lowercased()) { try await manager.openMain() }

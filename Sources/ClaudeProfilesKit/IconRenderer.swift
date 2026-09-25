@@ -1,7 +1,7 @@
 import AppKit
 
 /// Draws profile icons: the icon of the locally installed Claude app with a colored label band.
-/// Nothing from Claude.app is bundled with ClaudeUnlimited; the base icon is read from the user's own copy.
+/// Nothing from Claude.app is bundled with Claude Profiles; the base icon is read from the user's own copy.
 public enum IconRenderer {
     public static let size = 1024
 
@@ -15,7 +15,7 @@ public enum IconRenderer {
         }
     }
 
-    /// ClaudeUnlimited's own icon: a stack of three windows, one per subscription. Contains no third-party artwork.
+    /// Claude Profiles's own icon: a stack of three windows, one per subscription. Contains no third-party artwork.
     public static func appIcon() -> NSImage {
         render { rect in
             let s = rect.width

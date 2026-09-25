@@ -59,7 +59,7 @@ public struct Profile: Codable, Identifiable, Hashable, Sendable {
     }
 }
 
-/// The list of profiles, stored as JSON in the ClaudeUnlimited state directory.
+/// The list of profiles, stored as JSON in the Claude Profiles state directory.
 public struct ProfileRegistry: Sendable {
     public let paths: Paths
 

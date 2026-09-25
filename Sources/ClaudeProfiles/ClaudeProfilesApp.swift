@@ -1,13 +1,13 @@
-import ClaudeUnlimitedKit
+import ClaudeProfilesKit
 import SwiftUI
 
 @main
-struct ClaudeUnlimitedApp: App {
+struct ClaudeProfilesApp: App {
     @NSApplicationDelegateAdaptor(AppDelegate.self) private var delegate
     @StateObject private var model = AppModel()
 
     var body: some Scene {
-        Window("ClaudeUnlimited", id: "main") {
+        Window("Claude Profiles", id: "main") {
             ContentView(model: model)
         }
         .defaultSize(width: 900, height: 560)
@@ -43,7 +43,7 @@ struct MenuBarContent: View {
             Button(menuTitle(for: status)) { model.open(status) }
         }
         Divider()
-        Button("Open ClaudeUnlimited") {
+        Button("Open Claude Profiles") {
             openWindow(id: "main")
             NSApp.activate()
         }
@@ -54,7 +54,7 @@ struct MenuBarContent: View {
         }
         Button("Share Sessions Now") { model.syncNow() }
         Divider()
-        Button("Quit ClaudeUnlimited") { NSApp.terminate(nil) }.keyboardShortcut("q")
+        Button("Quit Claude Profiles") { NSApp.terminate(nil) }.keyboardShortcut("q")
     }
 
     private func menuTitle(for status: ProfileStatus) -> String {

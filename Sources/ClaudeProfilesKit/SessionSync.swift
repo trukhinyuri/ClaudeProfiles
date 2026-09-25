@@ -149,7 +149,7 @@ public struct SessionSync: Sendable {
     }
 }
 
-/// Copies a file into `Backups/<date>/` before ClaudeUnlimited overwrites or removes it.
+/// Copies a file into `Backups/<date>/` before Claude Profiles overwrites or removes it.
 /// Day folders older than a week go to the Trash, never straight to deletion.
 struct Backup {
     let paths: Paths

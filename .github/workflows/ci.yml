@@ -17,8 +17,8 @@ jobs:
       - name: Build app
         run: scripts/build-app.sh
       - name: Package
-        run: ditto -c -k --keepParent build/ClaudeUnlimited.app ClaudeUnlimited.zip
+        run: ditto -c -k --keepParent "build/Claude Profiles.app" ClaudeProfiles.zip
       - uses: actions/upload-artifact@v5
         with:
-          name: ClaudeUnlimited
-          path: ClaudeUnlimited.zip
+          name: ClaudeProfiles
+          path: ClaudeProfiles.zip

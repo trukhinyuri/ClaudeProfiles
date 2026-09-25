@@ -2,17 +2,17 @@
 import PackageDescription
 
 let package = Package(
-    name: "ClaudeUnlimited",
+    name: "ClaudeProfiles",
     platforms: [.macOS(.v14)],
     products: [
-        .executable(name: "ClaudeUnlimited", targets: ["ClaudeUnlimited"]),
-        .executable(name: "claude-unlimited", targets: ["claude-unlimited"]),
-        .library(name: "ClaudeUnlimitedKit", targets: ["ClaudeUnlimitedKit"]),
+        .executable(name: "ClaudeProfiles", targets: ["ClaudeProfiles"]),
+        .executable(name: "claude-profiles", targets: ["claude-profiles"]),
+        .library(name: "ClaudeProfilesKit", targets: ["ClaudeProfilesKit"]),
     ],
     targets: [
-        .target(name: "ClaudeUnlimitedKit"),
-        .executableTarget(name: "ClaudeUnlimited", dependencies: ["ClaudeUnlimitedKit"]),
-        .executableTarget(name: "claude-unlimited", dependencies: ["ClaudeUnlimitedKit"]),
-        .testTarget(name: "ClaudeUnlimitedKitTests", dependencies: ["ClaudeUnlimitedKit"]),
+        .target(name: "ClaudeProfilesKit"),
+        .executableTarget(name: "ClaudeProfiles", dependencies: ["ClaudeProfilesKit"]),
+        .executableTarget(name: "claude-profiles", dependencies: ["ClaudeProfilesKit"]),
+        .testTarget(name: "ClaudeProfilesKitTests", dependencies: ["ClaudeProfilesKit"]),
     ]
 )

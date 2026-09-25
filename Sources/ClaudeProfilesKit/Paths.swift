@@ -1,6 +1,6 @@
 import Foundation
 
-/// Every location ClaudeUnlimited reads or writes. Injected everywhere so tests can run in a sandbox.
+/// Every location Claude Profiles reads or writes. Injected everywhere so tests can run in a sandbox.
 public struct Paths: Sendable, Equatable {
     /// The user's home directory.
     public var home: URL
@@ -22,8 +22,8 @@ public struct Paths: Sendable, Equatable {
     /// Data directory of the main Claude Desktop app (the one you open from /Applications).
     public var mainDataDir: URL { applicationSupport.appending(path: "Claude", directoryHint: .isDirectory) }
 
-    /// ClaudeUnlimited's own state: profile registry and backups.
-    public var stateDir: URL { applicationSupport.appending(path: "ClaudeUnlimited", directoryHint: .isDirectory) }
+    /// Claude Profiles's own state: profile registry and backups.
+    public var stateDir: URL { applicationSupport.appending(path: "Claude Profiles", directoryHint: .isDirectory) }
     public var registryFile: URL { stateDir.appending(path: "profiles.json") }
     public var backupsDir: URL { stateDir.appending(path: "Backups", directoryHint: .isDirectory) }
 

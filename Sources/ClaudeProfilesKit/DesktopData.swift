@@ -20,7 +20,7 @@ public struct Usage: Equatable, Sendable {
     }
 }
 
-/// Read-only access to the few non-secret facts ClaudeUnlimited needs from a Claude Desktop data directory.
+/// Read-only access to the few non-secret facts Claude Profiles needs from a Claude Desktop data directory.
 ///
 /// Privacy boundary: `config.json` also holds OAuth token caches. Only `lastKnownAccountUuid` is read
 /// from it; nothing else is decoded, stored, logged or sent anywhere.
