@@ -13,6 +13,6 @@ let package = Package(
         .target(name: "ClaudeProfilesKit"),
         .executableTarget(name: "ClaudeProfiles", dependencies: ["ClaudeProfilesKit"]),
         .executableTarget(name: "claude-profiles", dependencies: ["ClaudeProfilesKit"]),
-        .testTarget(name: "ClaudeProfilesKitTests", dependencies: ["ClaudeProfilesKit"]),
+        .testTarget(name: "ClaudeProfilesKitTests", dependencies: ["ClaudeProfilesKit"], resources: [.copy("Fixtures")]),
     ]
 )
