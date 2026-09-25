@@ -114,13 +114,22 @@ enum IDBKey {
     /// A `KeyPrefix`: one byte giving the lengths of the three IDs, then each ID in as few little-endian bytes as it needs.
     static func prefix(_ database: UInt64, _ objectStore: UInt64, _ index: UInt64) -> [UInt8] {
         let d = encodeInt(database), o = encodeInt(objectStore), i = encodeInt(index)
-        return [UInt8(((d.count - 1) << 5) | ((o.count - 1) << 2) | (i.count - 1))] + d + o + i
+        let lengths: Int = (d.count - 1) << 5 | (o.count - 1) << 2 | (i.count - 1)
+        var key: [UInt8] = [UInt8(lengths)]
+        key += d
+        key += o
+        key += i
+        return key
     }
 
     static func objectStoreMetadata(_ database: UInt64, _ objectStore: UInt64, _ type: ObjectStoreMetadata) -> [UInt8] {
         var writer = ByteWriter()
         writer.appendVarint64(objectStore)
-        return prefix(database, 0, 0) + [50] + writer.bytes + [type.rawValue]
+        var key = prefix(database, 0, 0)
+        key.append(50)
+        key += writer.bytes
+        key.append(type.rawValue)
+        return key
     }
 
     /// `EncodeInt`: little-endian, as few bytes as the value needs, at least one.

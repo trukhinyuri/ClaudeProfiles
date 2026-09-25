@@ -183,7 +183,12 @@ struct InterfaceSyncTests {
     static func serialized(_ text: String) -> [UInt8] {
         var length = ByteWriter()
         length.appendVarint64(UInt64(text.utf8.count))
-        return [0xFF, 0x15, 0xFE] + [UInt8](repeating: 0, count: 12) + [0xFF, 0x0F, 0x22] + length.bytes + Array(text.utf8)
+        var bytes: [UInt8] = [0xFF, 0x15, 0xFE]
+        bytes += [UInt8](repeating: 0, count: 12)
+        bytes += [0xFF, 0x0F, 0x22]
+        bytes += length.bytes
+        bytes += Array(text.utf8)
+        return bytes
     }
 
     /// Claude's key-value IndexedDB database with `records` (key → version, JSON text), built on a copy of the
@@ -197,10 +202,16 @@ struct InterfaceSyncTests {
         try FileManager.default.createDirectory(at: store.dbDir.deletingLastPathComponent(), withIntermediateDirectories: true)
         try FileManager.default.copyItem(at: fixture, to: store.dbDir)
         let db = databaseID, os: UInt64 = 1
+        let versionKey: [UInt8] = IDBKey.prefix(0, 0, 0) + [IDBKey.dataVersionType]
+        var databaseName: [UInt8] = IDBKey.prefix(0, 0, 0) + [201]
+        databaseName += IDBKey.stringWithLength(store.origin)
+        databaseName += IDBKey.stringWithLength(store.database)
+        var storeName: [UInt8] = IDBKey.prefix(db, 0, 0) + [200]
+        storeName += IDBKey.stringWithLength(store.objectStore)
         var put: [([UInt8], [UInt8])] = [
-            (IDBKey.prefix(0, 0, 0) + [IDBKey.dataVersionType], IDBKey.encodeInt(dataVersion)),
-            (IDBKey.prefix(0, 0, 0) + [201] + IDBKey.stringWithLength(store.origin) + IDBKey.stringWithLength(store.database), IDBKey.encodeInt(db)),
-            (IDBKey.prefix(db, 0, 0) + [200] + IDBKey.stringWithLength(store.objectStore), IDBKey.encodeInt(os)),
+            (versionKey, IDBKey.encodeInt(dataVersion)),
+            (databaseName, IDBKey.encodeInt(db)),
+            (storeName, IDBKey.encodeInt(os)),
             (IDBKey.objectStoreMetadata(db, os, .name), IDBKey.utf16BE(store.objectStore)),
             (IDBKey.objectStoreMetadata(db, os, .lastVersion), IDBKey.encodeInt(records.values.map(\.0).max() ?? 0)),
         ]
@@ -273,7 +284,10 @@ struct InterfaceSyncTests {
             var ids = ByteWriter()
             ids.appendVarint64(os)
             ids.appendVarint64(30)
-            return [(IDBKey.prefix(db, 0, 0) + [IDBKey.indexMetadataType] + ids.bytes + [0], IDBKey.utf16BE("byDate"))]
+            var key: [UInt8] = IDBKey.prefix(db, 0, 0) + [IDBKey.indexMetadataType]
+            key += ids.bytes
+            key.append(0)
+            return [(key, IDBKey.utf16BE("byDate"))]
         }
         let keyGenerator: (UInt64, UInt64) -> [([UInt8], [UInt8])] = { db, os in [(IDBKey.objectStoreMetadata(db, os, .autoIncrement), [1])] }
         for (name, extra, dataVersion) in [("index", index, UInt64(0x10_0000_0015)),
