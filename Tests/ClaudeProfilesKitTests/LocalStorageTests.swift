@@ -129,6 +129,12 @@ struct LocalStorageTests {
         }
     }
 
+    @Test func fileNamesMatchLevelDBForEveryNumber() {
+        #expect(LevelDBDatabase.fileName(number: 7, suffix: "log") == "000007.log")
+        #expect(LevelDBDatabase.fileName(number: 1_234_567, suffix: "ldb") == "1234567.ldb")
+        #expect(LevelDBDatabase.fileName(number: 5_000_000_000, suffix: "log") == "5000000000.log")
+    }
+
     @Test func chromiumStringEncodingRoundTrips() {
         for value in ["", "ascii only", "line\nbreak", String(repeating: "z", count: 300)] {
             #expect(ChromiumKey.decodeString(ChromiumKey.encodeString(value)) == value)

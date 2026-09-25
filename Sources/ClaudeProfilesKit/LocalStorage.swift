@@ -63,6 +63,10 @@ public struct LocalStorage: Sendable {
 
     /// Appends one atomic batch of sets and removals for `origin`'s keys as a new log file. Never touches
     /// an existing file. Throws if the database is missing or another process has it open.
+    ///
+    /// The lock is checked once, not held: holding it would make a Claude window starting at that moment
+    /// fail to open its database. A window that opens it during the update simply doesn't see the new
+    /// file until its next start; nothing that was already there is affected.
     public func update(origin: String, set: [String: String], remove: Set<String>) throws {
         guard exists else { throw LocalStorageError.notFound }
         guard !isInUse else { throw LocalStorageError.databaseInUse }
@@ -677,8 +681,10 @@ struct LevelDBDatabase {
         return UInt64(name.dropLast(suffix.count + 1))
     }
 
+    /// Zero-padded to six digits like LevelDB's own names; built by hand because `%d` would cut a 64-bit number.
     static func fileName(number: UInt64, suffix: String) -> String {
-        String(format: "%06d.\(suffix)", number)
+        let digits = String(number)
+        return String(repeating: "0", count: max(0, 6 - digits.count)) + digits + "." + suffix
     }
 
     /// Every currently-live user key and its value: every live table plus every log file numbered at or
